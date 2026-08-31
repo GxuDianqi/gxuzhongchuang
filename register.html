@@ -28,26 +28,42 @@
     <div class="form-card" style="max-width:720px;">
       <h1>📝 2025 新生入会报名</h1>
       <p class="form-sub">
-        请认真填写以下信息，报名成功后可通过邮箱登录查看审批进度。
-        <br/>管理员审核通过后将通过邮箱通知面试与后续安排。
+        请认真填写以下真实身份信息。提交后管理员将在 48 小时内完成审核，
+        <br/>结果通过邮箱通知（面试安排与后续事宜）。
       </p>
 
       <div id="alert" class="alert"></div>
 
-      <!-- Step 1: 基本信息（用于创建账号） -->
-      <form id="register-form">
+      <!-- 身份信息栏（只读，从 Auth 登录态获取） -->
+      <div id="identity-card" class="identity-card" style="display:none;">
+        <div class="identity-left">
+          <div class="identity-title">✅ 邮箱已验证通过</div>
+          <div class="identity-hint">以下邮箱将作为您的报名联系方式与登录账号</div>
+        </div>
+        <div class="identity-right">
+          <div class="identity-label">当前登录邮箱</div>
+          <div class="identity-email" id="current-email"></div>
+          <a href="#" id="logout-link" style="font-size:0.82rem;color:var(--text-muted);">切换其他邮箱</a>
+        </div>
+      </div>
+
+      <!-- 纯报名表（账号信息：已经通过邮箱 OTP 验证，无需再填邮箱） -->
+      <form id="register-form" style="display:none;">
         <h3 style="color:var(--accent-cyan);font-size:1.05rem;margin:20px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--border-light);">
-          ① 账号信息（用于登录与接收通知）
+          ① 账号安全 · 设置登录密码（<span style="color:var(--accent-gold)">推荐必填</span>）
         </h3>
+        <p class="form-tips" style="margin:-6px 0 14px 0;">
+          填写后下次登录可直接使用「邮箱 + 密码」，无需每次收取 6 位验证码；不填则继续仅使用邮箱验证码登录。
+        </p>
 
         <div class="form-row">
           <div class="form-group">
-            <label for="email">邮箱 <span class="req">*</span></label>
-            <input type="email" id="email" class="form-control" placeholder="建议使用学校邮箱" required autocomplete="email" />
+            <label for="password">设置密码</label>
+            <input type="password" id="password" class="form-control" placeholder="至少 6 位，建议字母 + 数字" minlength="6" autocomplete="new-password" />
           </div>
           <div class="form-group">
-            <label for="password">设置密码 <span class="req">*</span></label>
-            <input type="password" id="password" class="form-control" placeholder="至少 6 位，建议字母+数字" required minlength="6" />
+            <label for="password_confirm">确认密码</label>
+            <input type="password" id="password_confirm" class="form-control" placeholder="再输入一次相同的密码" minlength="6" autocomplete="new-password" />
           </div>
         </div>
 
@@ -152,12 +168,12 @@
         </div>
 
         <button type="submit" class="btn btn-primary btn-submit" id="submit-btn">
-          ✅ 提交报名 &amp; 创建账号
+          ✅ 提交报名申请
         </button>
       </form>
 
       <div class="form-footer">
-        <p>已经报名过？<a href="login.html">登录查看审批状态 →</a></p>
+        <p>想修改资料或查看审批状态？<a href="login.html">返回登录页 →</a></p>
       </div>
     </div>
   </main>
