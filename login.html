@@ -26,31 +26,63 @@
 
   <main class="form-page">
     <div class="form-card" id="login-card">
-      <h1>🔐 邮箱登录</h1>
-      <p class="form-sub">
-        新生可登录后查看报名审批状态，管理员可登录后进入审批后台。
+      <h1 id="form-title">🔐 邮箱验证码登录</h1>
+      <p class="form-sub" id="form-sub">
+        新生首次登录即自动注册并验证邮箱。请使用广西大学在校邮箱或常用邮箱接收 6 位验证码。
       </p>
 
       <div id="alert" class="alert"></div>
 
-      <form id="login-form">
-        <div class="form-group">
-          <label for="email">邮箱 <span class="req">*</span></label>
-          <input type="email" id="email" class="form-control" placeholder="your@email.com" required autocomplete="email" />
+      <!-- ===== 模式 1：OTP 6 位邮箱验证码（默认，学生用） ===== -->
+      <form id="otp-form">
+        <!-- Step 1: 输入邮箱，发送验证码 -->
+        <div class="form-group" id="otp-step-email">
+          <label for="otp-email">邮箱 <span class="req">*</span></label>
+          <input type="email" id="otp-email" class="form-control" placeholder="your@email.com" required autocomplete="email" />
         </div>
-        <div class="form-group">
-          <label for="password">密码 <span class="req">*</span></label>
-          <input type="password" id="password" class="form-control" placeholder="至少 6 位" required minlength="6" autocomplete="current-password" />
+        <!-- Step 2: 6 位验证码输入框 + 重发倒计时（发送后显示） -->
+        <div class="form-group" id="otp-step-code" style="display:none;">
+          <label for="otp-token">6 位邮箱验证码 <span class="req">*</span></label>
+          <input type="text" id="otp-token" class="form-control" inputmode="numeric"
+                 pattern="[0-9A-Za-z]*" maxlength="32" placeholder="粘贴邮件中显示的 6 位验证码" required autocomplete="one-time-code" />
+          <div class="hint-line">
+            <a href="#" id="resend-link" style="pointer-events:none;opacity:0.5;">重新发送验证码</a>
+            <span id="resend-countdown" style="color:var(--text-muted);font-size:0.85rem;margin-left:8px;"></span>
+          </div>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-submit" id="submit-btn">
-          登录
+        <button type="submit" class="btn btn-primary btn-submit" id="otp-submit-btn">
+          发送验证码
         </button>
+      </form>
+
+      <!-- ===== 模式 2：邮箱+密码（管理员隐藏入口，避免新生用假邮箱绕过验证码） ===== -->
+      <form id="password-form" style="display:none;margin-top:8px;">
+        <div class="form-group">
+          <label for="pwd-email">邮箱 <span class="req">*</span></label>
+          <input type="email" id="pwd-email" class="form-control" placeholder="管理员邮箱" required autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="pwd-password">密码 <span class="req">*</span></label>
+          <input type="password" id="pwd-password" class="form-control" placeholder="至少 6 位" required minlength="6" autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-submit" id="pwd-submit-btn">登录</button>
       </form>
 
       <div class="form-footer">
         <p>还没有账号？<a href="register.html">去报名 →</a></p>
-        <p style="margin-top:8px;">忘记密码？<a href="#" id="forgot-link">点击找回 →</a></p>
+
+        <p id="otp-hint-line" style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;">
+          💡 <span style="color:var(--accent-gold);">小贴士：</span>首次使用邮箱验证码登录后，可在报名页「设置登录密码」，下次免输入验证码直接密码登录。
+        </p>
+
+        <!-- 模式切换：OTP ↔ 管理员密码 -->
+        <p id="mode-switch" style="margin-top:10px;cursor:default;">
+          <span style="color:var(--text-muted);font-size:0.85rem;">管理员专用：</span>
+          <a href="#" id="switch-pwd-link" style="font-size:0.85rem;">使用密码登录 →</a>
+        </p>
+
+        <p style="margin-top:8px;">忘记密码？<a href="#" id="forgot-link" style="display:none;">点击找回 →</a></p>
       </div>
     </div>
   </main>
