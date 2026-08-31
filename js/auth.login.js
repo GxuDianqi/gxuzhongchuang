@@ -161,10 +161,13 @@ otpForm?.addEventListener('submit', async (e) => {
       });
       if (error) throw error;
 
-      // 切到 Phase 2：显示验证码输入框
+      // 切到 Phase 2：显示验证码输入框（此时 input 可见，才允许 required 生效，避免 Chrome focus 警告）
       otpPhase = 'verify';
       otpStepEmailBox.style.display = 'none'; // 不允许改邮箱（防作弊切换他人邮箱用自己验证码）
       otpStepCodeBox.style.display  = 'block';
+      otpTokenInput.removeAttribute('disabled');
+      otpTokenInput.setAttribute('required', '');
+      otpTokenInput.value = '';
       otpTokenInput.focus();
       otpSubmitBtn.textContent      = '验证并登录';
       setLoading(otpSubmitBtn, false);
@@ -307,10 +310,12 @@ function applyMode(nextMode) {
     applyMode('password');
   });
 
-  // 重置 OTP Phase
+  // 重置 OTP Phase（回到 send 阶段，隐藏 token 输入框 → 禁用 required，避免 Chrome 尝试 focus 隐藏控件）
   otpPhase = 'send';
   otpStepEmailBox.style.display = 'block';
   otpStepCodeBox.style.display  = 'none';
+  otpTokenInput.setAttribute('disabled', '');
+  otpTokenInput.removeAttribute('required');
   otpSubmitBtn.textContent      = '发送验证码';
   otpTokenInput.value           = '';
   otpEmailInput.focus();
