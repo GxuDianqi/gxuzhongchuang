@@ -1,0 +1,45 @@
+# ===== 系统 / 编辑器 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== 本地临时解压 PPT 产物 =====
+_pptx_extract/
+_temp_ppt.zip
+_extract_ppt.ps1
+_ppt_content.json
+
+# ===== 日志 & 备份 =====
+*.log
+*.bak
+*.old
+
+# ===== Node（如果将来本地加构建） =====
+node_modules/
+dist/
+build/
+.cache/
+.parcel-cache/
+.npmrc
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ===== 敏感信息（虽然 Supabase anon key 公开是允许的，
+#       但 service_role / .env 绝对不能提交） =====
+.env
+.env.*
+!.env.example
+supabase/service-key.txt
+*.pem
+*.key
+secret/
+
+# ===== 原 PPT 文件（建议保留，不需要 git 跟踪可解除下一行注释） =====
+# *.pptx
+# *.ppt

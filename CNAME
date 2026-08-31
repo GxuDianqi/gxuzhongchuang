@@ -1,0 +1,7 @@
+# 自定义域名示例 —— 把下一行改成你自己的域名（不要加 https:// 和末尾斜杠）
+# 例如：
+# www.gzu-ai.club
+# zhaoxin.gxumaker.com
+#
+# 改完后保存，推送到 GitHub。同时在仓库 Settings → Pages → Custom domain 中填写相同域名即可。
+www.example.com

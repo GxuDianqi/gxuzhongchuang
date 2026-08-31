@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>新生报名 | 广西大学众创空间 · AI与机器人协会招新</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📝%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="nav-logo">
+        <span class="nav-logo-dot"></span>
+        <span>GZU · 众创空间 | AI&amp;机器人协会</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="index.html#about">协会简介</a></li>
+        <li><a href="index.html#honors">荣誉竞赛</a></li>
+        <li><a href="register.html" class="active">报名</a></li>
+        <li><a href="login.html">登录</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main class="form-page">
+    <div class="form-card" style="max-width:720px;">
+      <h1>📝 2025 新生入会报名</h1>
+      <p class="form-sub">
+        请认真填写以下信息，报名成功后可通过邮箱登录查看审批进度。
+        <br/>管理员审核通过后将通过邮箱通知面试与后续安排。
+      </p>
+
+      <div id="alert" class="alert"></div>
+
+      <!-- Step 1: 基本信息（用于创建账号） -->
+      <form id="register-form">
+        <h3 style="color:var(--accent-cyan);font-size:1.05rem;margin:20px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--border-light);">
+          ① 账号信息（用于登录与接收通知）
+        </h3>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="email">邮箱 <span class="req">*</span></label>
+            <input type="email" id="email" class="form-control" placeholder="建议使用学校邮箱" required autocomplete="email" />
+          </div>
+          <div class="form-group">
+            <label for="password">设置密码 <span class="req">*</span></label>
+            <input type="password" id="password" class="form-control" placeholder="至少 6 位，建议字母+数字" required minlength="6" />
+          </div>
+        </div>
+
+        <h3 style="color:var(--accent-cyan);font-size:1.05rem;margin:20px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--border-light);">
+          ② 个人基本信息
+        </h3>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="name">姓名 <span class="req">*</span></label>
+            <input type="text" id="name" class="form-control" placeholder="真实姓名" required maxlength="20" />
+          </div>
+          <div class="form-group">
+            <label for="gender">性别 <span class="req">*</span></label>
+            <select id="gender" class="form-control" required>
+              <option value="">请选择</option>
+              <option value="男">男</option>
+              <option value="女">女</option>
+              <option value="其他">其他 / 不愿透露</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="student_id">学号 <span class="req">*</span></label>
+            <input type="text" id="student_id" class="form-control" placeholder="例如 2501234567" required maxlength="20" />
+          </div>
+          <div class="form-group">
+            <label for="phone">手机号 <span class="req">*</span></label>
+            <input type="tel" id="phone" class="form-control" placeholder="11 位手机号码" required pattern="1[3-9]\d{9}" maxlength="11" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="college">学院 <span class="req">*</span></label>
+            <input type="text" id="college" class="form-control" placeholder="如 计算机与电子信息学院" required maxlength="50" />
+          </div>
+          <div class="form-group">
+            <label for="major">专业 <span class="req">*</span></label>
+            <input type="text" id="major" class="form-control" placeholder="如 人工智能" required maxlength="50" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="grade">年级 <span class="req">*</span></label>
+            <select id="grade" class="form-control" required>
+              <option value="">请选择</option>
+              <option value="2025级">2025级（大一）</option>
+              <option value="2024级">2024级（大二）</option>
+              <option value="2023级">2023级（大三）</option>
+              <option value="2022级">2022级（大四）</option>
+              <option value="研究生">研究生</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="first_department">意向方向（第一志愿）<span class="req">*</span></label>
+            <select id="first_department" class="form-control" required>
+              <option value="">请选择</option>
+              <option value="机器人研发">🤖 机器人研发</option>
+              <option value="人工智能">🧠 人工智能</option>
+              <option value="虚拟现实VR">🥽 虚拟现实 VR</option>
+              <option value="人机交互HCI">🖐️ 人机交互 HCI</option>
+              <option value="机械臂开发">🦾 机械臂开发</option>
+              <option value="暂不确定">🌱 暂不确定（听从安排）</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="second_department">第二志愿（可选）</label>
+          <select id="second_department" class="form-control">
+            <option value="">无 / 服从调剂</option>
+            <option value="机器人研发">🤖 机器人研发</option>
+            <option value="人工智能">🧠 人工智能</option>
+            <option value="虚拟现实VR">🥽 虚拟现实 VR</option>
+            <option value="人机交互HCI">🖐️ 人机交互 HCI</option>
+            <option value="机械臂开发">🦾 机械臂开发</option>
+          </select>
+        </div>
+
+        <h3 style="color:var(--accent-cyan);font-size:1.05rem;margin:20px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--border-light);">
+          ③ 背景与经历（让我们更了解你）
+        </h3>
+
+        <div class="form-group">
+          <label for="skills">已有技能 / 经验（编程语言、软件工具、竞赛经历等）</label>
+          <textarea id="skills" class="form-control" rows="3" placeholder="例如：Python / C++ 基础，会用 PS、PR，参加过校编程比赛，无经验也欢迎～"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="motivation">报名动机 &amp; 自我介绍 <span class="req">*</span></label>
+          <textarea id="motivation" class="form-control" rows="4" required placeholder="简单介绍一下自己：为什么想加入我们？未来想在哪些方向学习和成长？（不少于 30 字）" minlength="30"></textarea>
+          <div class="form-tips">💡 真诚比花哨更重要，我们看重的是你的意愿和潜力。</div>
+        </div>
+
+        <div class="form-group">
+          <label for="expectation">对协会的期望 / 想问的问题</label>
+          <textarea id="expectation" class="form-control" rows="2" placeholder="可以留空～"></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-submit" id="submit-btn">
+          ✅ 提交报名 &amp; 创建账号
+        </button>
+      </form>
+
+      <div class="form-footer">
+        <p>已经报名过？<a href="login.html">登录查看审批状态 →</a></p>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>© 2025 广西大学众创空间 · 人工智能与机器人协会</p>
+  </footer>
+
+  <script type="module" src="js/supabase-init.js"></script>
+  <script type="module" src="js/register.js"></script>
+</body>
+</html>

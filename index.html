@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="广西大学众创空间 · 人工智能与机器人协会 2025年招新官网 —— 学习方向：人机交互、虚拟现实、机械臂、机器人、人工智能。竞赛保研、综测加分、零基础友好。" />
+  <title>广西大学众创空间 · AI与机器人协会 | 2025招新</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🤖%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="nav-logo">
+        <span class="nav-logo-dot"></span>
+        <span>GZU · 众创空间 | AI&amp;机器人协会</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#about" class="active">协会简介</a></li>
+        <li><a href="#honors">荣誉竞赛</a></li>
+        <li><a href="#advantages">部门优势</a></li>
+        <li><a href="#benefits">加入收获</a></li>
+        <li id="nav-right-links">
+          <a href="login.html">登录</a>
+          <a href="register.html" class="nav-cta">立即报名</a>
+        </li>
+      </ul>
+      <div id="nav-user" class="nav-user" style="display:none;">
+        <span class="user-email" id="user-email"></span>
+        <button class="btn-logout" id="btn-logout">退出登录</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-badge">
+        <span style="display:inline-block;width:8px;height:8px;background:var(--accent-cyan);border-radius:50%;animation:flash 1.4s infinite;"></span>
+        2025 年度招新正式开启 · 零基础友好
+      </div>
+      <h1 class="hero-title">
+        广西大学众创空间<br/>人工智能与机器人协会
+      </h1>
+      <p class="hero-subtitle">
+        聚焦人工智能 · 机器人 · 虚拟现实 · 人机交互等前沿领域，
+        依托众创空间实验资源，对接顶尖导师与国家级竞赛平台，
+        助力每一位成员斩获奖项、提升保研竞争力。
+      </p>
+      <div class="hero-stats">
+        <div class="stat-item">
+          <div class="stat-num">40+</div>
+          <div class="stat-label">国家级奖项</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">30+</div>
+          <div class="stat-label">国际级奖项</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">20%</div>
+          <div class="stat-label">国家一等奖占比</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">5大</div>
+          <div class="stat-label">核心学习方向</div>
+        </div>
+      </div>
+      <div class="hero-buttons">
+        <a href="register.html" class="btn btn-primary">🚀 立即报名加入</a>
+        <a href="#honors" class="btn btn-outline">🏆 查看竞赛荣誉</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- About / 协会简介 + 学习方向 -->
+  <section class="section" id="about">
+    <div class="section-title">
+      <div class="section-tag">ABOUT US</div>
+      <h2 class="section-heading">协会简介 · 五大核心学习方向</h2>
+      <p class="section-desc">
+        广西大学众创空间 · 人工智能与机器人协会，是一支跨学科深度融合的创新团队，
+        致力于培养成员的工程实践能力与创新精神。
+      </p>
+    </div>
+    <div class="about-grid">
+      <div class="about-card">
+        <div class="card-icon">🤖</div>
+        <h3 class="card-title">机器人研发</h3>
+        <p class="card-desc">
+          从底盘控制到运动规划，亲手打造智能车、平衡车、机械臂等实物机器人，
+          参与睿抗（RAICOM）等顶级机器人赛事。
+        </p>
+      </div>
+      <div class="about-card">
+        <div class="card-icon">🧠</div>
+        <h3 class="card-title">人工智能</h3>
+        <p class="card-desc">
+          深度学习、计算机视觉、自然语言处理、大模型微调……
+          从零掌握AI核心技术，冲击中国机器人及人工智能大赛国奖。
+        </p>
+      </div>
+      <div class="about-card">
+        <div class="card-icon">🥽</div>
+        <h3 class="card-title">虚拟现实 VR</h3>
+        <p class="card-desc">
+          基于 Unity / Unreal 打造沉浸式 VR 场景与互动应用，
+          探索元宇宙与数字孪生的前沿落地场景。
+        </p>
+      </div>
+      <div class="about-card">
+        <div class="card-icon">🖐️</div>
+        <h3 class="card-title">人机交互 HCI</h3>
+        <p class="card-desc">
+          研究人与机器人/虚拟环境的自然交互：手势识别、姿态捕捉、
+          多模态感知，让智能设备真正 "懂你"。
+        </p>
+      </div>
+      <div class="about-card">
+        <div class="card-icon">🦾</div>
+        <h3 class="card-title">机械臂开发</h3>
+        <p class="card-desc">
+          正逆运动学建模、ROS 系统集成、抓取与搬运任务，
+          结合工业级机械臂开展产学研项目。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Honors / 荣誉竞赛 -->
+  <section id="honors">
+    <div class="section honors">
+      <div class="section-title">
+        <div class="section-tag">AWARDS & HONORS</div>
+        <h2 class="section-heading">竞赛荣誉 · 奖项拿到手软</h2>
+        <p class="section-desc">
+          团队近年来在国内外顶级赛事中屡创佳绩，国奖数量与质量持续领跑。
+          经验与保研，是我们带给成员最硬核的回报。
+        </p>
+      </div>
+      <div class="honors-grid">
+        <div class="honor-card">
+          <div class="honor-top">
+            <div class="honor-name">中国机器人及人工智能大赛</div>
+            <div class="honor-badge">40+</div>
+          </div>
+          <div class="honor-detail">
+            国家级奖项累计 <strong>40+ 项</strong>，
+            其中国家一等奖占比高达 <strong>20%</strong>，
+            在AI创新赛、机器人应用赛等多个赛道全面开花。
+          </div>
+        </div>
+        <div class="honor-card">
+          <div class="honor-top">
+            <div class="honor-name">国际青年人工智能大赛</div>
+            <div class="honor-badge">30+</div>
+          </div>
+          <div class="honor-detail">
+            国际级奖项 <strong>30+ 项</strong>，
+            国家一等奖 + 二等奖合计占比 <strong>50%</strong>，
+            代表广西大学在国际AI舞台上崭露头角。
+          </div>
+        </div>
+        <div class="honor-card">
+          <div class="honor-top">
+            <div class="honor-name">睿抗（RAICOM）机器人开发者大赛</div>
+            <div class="honor-badge">5+ / 10+</div>
+          </div>
+          <div class="honor-detail">
+            国家级奖项 <strong>5+ 项</strong>，
+            省级一等奖 <strong>10+ 项</strong>。
+            在机器人对抗、创意开发等赛道持续突破。
+          </div>
+        </div>
+        <div class="honor-card">
+          <div class="honor-top">
+            <div class="honor-name">全国海洋航行器设计与制作大赛</div>
+            <div class="honor-badge">1 / 1 / 1</div>
+          </div>
+          <div class="honor-detail">
+            国家二等奖 <strong>1 项</strong> ·
+            省级特等奖 <strong>1 项</strong> ·
+            省级一等奖 <strong>1 项</strong>。
+            船舶与海洋工程交叉领域强势切入。
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Advantages / 部门优势 -->
+  <section class="section" id="advantages">
+    <div class="section-title">
+      <div class="section-tag">OUR ADVANTAGES</div>
+      <h2 class="section-heading">四大部门优势 · 赋能每一位成员</h2>
+      <p class="section-desc">
+        我们不只是比赛团队，更是一个开放、包容、协作共进的成长社区。
+      </p>
+    </div>
+    <div class="advantages">
+      <div class="adv-block">
+        <h3>🧬 多学科深度融合</h3>
+        <ul>
+          <li><strong>人工智能</strong> + 机器人 + 虚拟现实 + 人机交互</li>
+          <li>打破专业壁垒，培养跨学科复合型创新人才</li>
+          <li>真实项目推动：算法、硬件、软件全程实战</li>
+        </ul>
+      </div>
+      <div class="adv-block">
+        <h3>⚙️ 资源与平台加持</h3>
+        <ul>
+          <li>优先获得众创空间<strong>实验资源</strong>与设备使用权</li>
+          <li>接触前沿项目，<strong>对接导师</strong>与国家级竞赛平台</li>
+          <li>定期开展技术沙龙、专家讲座与 Workshop</li>
+        </ul>
+      </div>
+      <div class="adv-block">
+        <h3>🌱 开放包容 · 零基础友好</h3>
+        <ul>
+          <li>不卡背景、不挑专业，<strong>重视探索意愿</strong></li>
+          <li>鼓励大胆尝试，允许试错，容错文化浓厚</li>
+          <li>循序渐进的培养体系：入门 → 进阶 → 参赛</li>
+        </ul>
+      </div>
+      <div class="adv-block">
+        <h3>🤝 协作共进机制</h3>
+        <ul>
+          <li>建立<strong>开放交流机制</strong>，技术问题及时响应</li>
+          <li>老带新 "传帮带"，学长学姐倾囊相授</li>
+          <li>项目制组队学习：1 + 1 &gt; 2 的协同效应</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Benefits / 加入收获 -->
+  <section class="section" id="benefits" style="background:var(--bg-secondary);border-top:1px solid var(--border-light);border-bottom:1px solid var(--border-light);max-width:none;">
+    <div style="max-width:1200px;margin:0 auto;padding:0 24px;">
+      <div class="section-title">
+        <div class="section-tag">WHY JOIN US</div>
+        <h2 class="section-heading">加入我们，你将收获</h2>
+        <p class="section-desc">不只是一段校园经历，更是一份受益终身的成长履历。</p>
+      </div>
+      <div class="benefits-grid">
+        <div class="benefit-box">
+          <div class="benefit-emoji">🕸️</div>
+          <div class="benefit-title">跨领域人脉网络</div>
+          <div class="benefit-desc">结识来自计电、机械、材料、海洋等学院的技术伙伴，构建强大专业人脉。</div>
+        </div>
+        <div class="benefit-box">
+          <div class="benefit-emoji">🎯</div>
+          <div class="benefit-title">保研核心竞争力</div>
+          <div class="benefit-desc">国家级 / 国际级奖项加持，简历亮点满满，显著提升保研与考研复试成功率。</div>
+        </div>
+        <div class="benefit-box">
+          <div class="benefit-emoji">🛠️</div>
+          <div class="benefit-title">项目实战经验</div>
+          <div class="benefit-desc">真实项目 + 高强度竞赛训练，工程能力与代码水平实现质的飞跃。</div>
+        </div>
+        <div class="benefit-box">
+          <div class="benefit-emoji">📈</div>
+          <div class="benefit-title">综测加分机会</div>
+          <div class="benefit-desc">参与学术科技活动、竞赛获奖均可计入综测，奖学金 &amp; 保研排名一路领先。</div>
+        </div>
+        <div class="benefit-box">
+          <div class="benefit-emoji">💡</div>
+          <div class="benefit-title">创新思维培养</div>
+          <div class="benefit-desc">系统培养创新能力、工程思维与团队协作精神，全面提升核心素养。</div>
+        </div>
+        <div class="benefit-box">
+          <div class="benefit-emoji">🏆</div>
+          <div class="benefit-title">各类奖项荣誉</div>
+          <div class="benefit-desc">各种奖项拿到手软！国赛、省赛、国际赛多赛道并进，荣誉满载而归。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <h2>✨ 经验！保研！就等你一个决定</h2>
+    <p>零基础？没关系。只要你有热情、有好奇心，我们就欢迎你！</p>
+    <div style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap;">
+      <a href="register.html" class="btn btn-primary">📝 立即填写报名表单</a>
+      <a href="login.html" class="btn btn-outline">🔐 邮箱登录查询状态</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>© 2025 广西大学众创空间 · 人工智能与机器人协会. All rights reserved.</p>
+    <p style="margin-top:6px;">技术栈：<a href="https://pages.github.com/" target="_blank">GitHub Pages</a> 静态托管 +
+      <a href="https://supabase.com/" target="_blank">Supabase</a> 后端 + 自定义域名</p>
+  </footer>
+
+  <!-- Supabase + Auth -->
+  <script type="module" src="js/supabase-init.js"></script>
+  <script type="module" src="js/auth.js"></script>
+</body>
+</html>
