@@ -43,8 +43,8 @@
         <!-- Step 2: 6 位验证码输入框 + 重发倒计时（发送后显示） -->
         <div class="form-group" id="otp-step-code" style="display:none;">
           <label for="otp-token">6 位邮箱验证码 <span class="req">*</span></label>
-          <input type="text" id="otp-token" class="form-control" inputmode="numeric"
-                 pattern="[0-9A-Za-z]*" maxlength="32" placeholder="粘贴邮件中显示的 6 位验证码" required autocomplete="one-time-code" />
+          <input type="text" id="otp-token" name="otp-token" class="form-control" inputmode="numeric"
+                 pattern="[0-9A-Za-z]*" maxlength="32" placeholder="粘贴邮件中显示的 6 位验证码" disabled autocomplete="one-time-code" />
           <div class="hint-line">
             <a href="#" id="resend-link" style="pointer-events:none;opacity:0.5;">重新发送验证码</a>
             <span id="resend-countdown" style="color:var(--text-muted);font-size:0.85rem;margin-left:8px;"></span>
