@@ -1876,6 +1876,74 @@ table.applicant-table {
 }
 .notice-banner-close:hover { color: var(--accent-gold); background: rgba(250,204,21,0.1); }
 
+/* ========================================================
+ * 管理员页 Modal（报名详情弹窗）
+ * ======================================================== */
+.modal-mask {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(6px);
+  display: none; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: modalFadeIn 0.18s ease;
+}
+.modal-mask.show { display: flex; }
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.modal {
+  background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%);
+  border: 1px solid rgba(3,252,254,0.25);
+  border-radius: 16px;
+  width: 100%; max-width: 640px;
+  max-height: 88vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(3,252,254,0.08);
+  animation: modalSlideIn 0.2s ease;
+  overflow: hidden;
+}
+@keyframes modalSlideIn {
+  from { transform: translateY(24px) scale(0.97); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid rgba(3,252,254,0.15);
+  flex-shrink: 0;
+}
+.modal-header h3 {
+  margin: 0; font-size: 1.1rem; color: var(--accent-cyan); font-weight: 700;
+}
+.modal-close {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 1.6rem; cursor: pointer; line-height: 1; padding: 2px 8px;
+  border-radius: 6px; transition: color 0.15s, background 0.15s;
+}
+.modal-close:hover { color: var(--accent-cyan); background: rgba(3,252,254,0.1); }
+.modal-body {
+  padding: 18px 22px 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px 14px;
+  font-size: 0.92rem;
+}
+.detail-grid .dt {
+  color: var(--text-muted); font-weight: 600; text-align: right;
+  padding-right: 4px;
+}
+.detail-grid .dd {
+  color: var(--text-primary); word-break: break-word;
+}
+
+/* 协会管理员名额卡片 */
+.quota-card {}
+
 /* 身份卡 · 老样式兼容（register.html 里用了新的类） */
 .identity-card .identity-left  { display:flex; flex-direction:column; gap:4px; }
 .identity-card .identity-right { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
