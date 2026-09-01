@@ -35,7 +35,7 @@
       <div id="nav-user" class="nav-user" style="display:none;">
         <span class="user-email" id="user-email"></span>
         <a href="register.html" class="btn-user-action" title="填写/修改报名表">📝 报名资料</a>
-        <button class="btn-user-action" id="btn-set-pwd" title="跳转至独立密码管理页设置/修改登录密码">🔐 修改密码</button>
+        <button class="btn-user-action btn-pwd" id="btn-set-pwd" onclick="location.href='change-password.html'" title="跳转至独立密码管理页设置/修改登录密码">🔐 修改密码</button>
         <button class="btn-logout" id="btn-logout">退出登录</button>
       </div>
     </div>
@@ -755,6 +755,9 @@
             </a>
             <a href="register.html" id="hero-fill-cta-btn" class="btn btn-outline btn-large">
               📋 已登录？直接填写报名表
+            </a>
+            <a href="change-password.html" id="hero-pwd-btn" class="btn btn-gold btn-large" style="display:none;">
+              🔑 设置登录密码
             </a>
           </div>
         </div>
