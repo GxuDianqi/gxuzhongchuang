@@ -1,125 +1,856 @@
-/* ========================================================
- * auth.js — 首页导航栏的用户状态渲染 & 登出
- *         + 所有「报名」入口按钮 按登录态动态切换文案/链接
- *         + 已登录用户的「🔐 修改密码」入口（发送邮箱确认邮件）
- * ======================================================== */
-import { supabase, isCurrentUserAdmin, showAlert } from './supabase-init.js';
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="广西大学电气工程学院众创空间 · 2026年度招新官网。三大中心（管理/创新创业/科普实践）+ 五大协会（人工智能与机器人/奇客电子/电力系统与智能电网/电力电子/物联网）。竞赛保研、综测加分、零基础友好。" />
+  <title>广西大学众创空间 · 三大中心 & 五大协会 | 2026招新</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E⚡%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <!-- ================= 科技粒子背景（Canvas，z-index:-2） ================= -->
+  <canvas id="particle-canvas" aria-hidden="true"></canvas>
+  <!-- ================= 扫描线特效（切页时触发扫描动画） ================= -->
+  <div id="scanline" class="scanline" aria-hidden="true"></div>
 
-const navRight = document.getElementById('nav-right-links');
-const navUser = document.getElementById('nav-user');
-const userEmailEl = document.getElementById('user-email');
-const btnLogout = document.getElementById('btn-logout');
-const btnSetPwd = document.getElementById('btn-set-pwd');
+  <!-- ================= 顶部一级全局导航（吸顶 + 发光下划线） ================= -->
+  <nav class="navbar" id="top-navbar">
+    <div class="nav-container">
+      <a href="#home" class="nav-logo" data-level1="home">
+        <span class="nav-logo-dot"></span>
+        <span>GZU<span style="color:var(--text-muted)"> · </span>电气工程学院·众创空间</span>
+      </a>
+      <ul class="nav-links" id="level1-tabs">
+        <li><a href="#home"           class="level1-link active" data-target="home">众创首页</a></li>
+        <li><a href="#centers"        class="level1-link"        data-target="centers">三大中心</a></li>
+        <li><a href="#associations"   class="level1-link"        data-target="associations">五大协会</a></li>
+        <li><a href="#signup"         class="level1-link"        data-target="signup">招新报名</a></li>
+        <li><a href="#about"          class="level1-link"        data-target="about">关于我们</a></li>
+        <li id="nav-right-links">
+          <a href="login.html">登录</a>
+          <a href="register.html" id="nav-cta-btn" class="nav-cta">立即报名</a>
+        </li>
+      </ul>
+      <div id="nav-user" class="nav-user" style="display:none;">
+        <span class="user-email" id="user-email"></span>
+        <a href="register.html" class="btn-user-action" title="填写/修改报名表">📝 报名资料</a>
+        <button class="btn-user-action btn-pwd" id="btn-set-pwd" onclick="location.href='change-password.html'" title="跳转至独立密码管理页设置/修改登录密码">🔐 修改密码</button>
+        <button class="btn-logout" id="btn-logout">退出登录</button>
+      </div>
+    </div>
+  </nav>
 
-// 首页所有「报名」入口按钮 id（每个页面加载时只修改存在的，不存在跳过）
-const CTA_BTN_IDS = ['nav-cta-btn', 'hero-cta-btn', 'footer-cta-btn'];
+  <!-- ================= 首次登录欢迎横幅（双 CTA：立即报名 / 设置密码） =================
+       默认隐藏；auth.js 中 applyUserBadgeState() 在登录时显示，未登录/退出 时隐藏 -->
+  <div id="welcome-banner" class="welcome-banner" style="display:none;">
+    <div class="welcome-banner-inner glass-panel">
+      <div class="welcome-main">
+        <div class="welcome-icon">👋</div>
+        <div class="welcome-text">
+          <div class="welcome-title">欢迎加入广西大学众创空间 · 2026 年度招新！</div>
+          <div class="welcome-sub">
+            首次登录：建议先<b>设置登录密码</b>（下次可直接邮箱+密码登录），再填写报名表。
+            也可以先自由浏览「三大中心 · 五大协会」介绍，随时从右上角或下方按钮进入报名。
+          </div>
+        </div>
+      </div>
+      <div class="welcome-actions">
+        <a href="change-password.html" class="btn btn-gold btn-block-sm">🔐 先设置登录密码</a>
+        <a href="register.html"        class="btn btn-primary btn-block-sm">📝 填写报名表 →</a>
+        <button type="button" class="btn-icon-close" id="welcome-close" aria-label="关闭欢迎提示">×</button>
+      </div>
+    </div>
+  </div>
 
-// 根据登录态更新 3 个报名 CTA 按钮：
-//   未登录 → 跳 login.html?redirect=register.html，文案「🔐 登录后报名」
-//   已登录 → 直接跳 register.html，文案「📝 填写报名表」
-function applyCtaButtons(loggedIn) {
-  for (const id of CTA_BTN_IDS) {
-    const btn = document.getElementById(id);
-    if (!btn) continue;
-    if (loggedIn) {
-      btn.href      = 'register.html';
-      btn.innerHTML = (id === 'hero-cta-btn') ? '🚀 填写报名表加入'
-                    : (id === 'nav-cta-btn')  ? '填写报名表'
-                    : '📝 填写报名表';
-    } else {
-      btn.href      = 'login.html?redirect=' + encodeURIComponent('register.html');
-      btn.innerHTML = (id === 'hero-cta-btn') ? '🔐 登录后报名'
-                    : (id === 'nav-cta-btn')  ? '登录后报名'
-                    : '🔐 先登录再填写表单';
-    }
-  }
-}
+  <!-- ================= 全站公告横幅 ================= -->
+  <div id="notice-banner-wrap" style="display:none;">
+    <div class="container">
+      <div id="notice-banner" class="notice-banner">
+        <button class="notice-banner-close" id="notice-banner-close" aria-label="关闭公告">×</button>
+        <div class="notice-banner-icon">📢</div>
+        <div class="notice-banner-body">
+          <div class="notice-banner-title" id="notice-banner-title"></div>
+          <div class="notice-banner-content" id="notice-banner-content"></div>
+        </div>
+        <div class="notice-banner-meta" id="notice-banner-meta"></div>
+      </div>
+    </div>
+  </div>
 
-// ---------- 已登录用户：点击「修改密码」→ 直接跳独立密码管理页 change-password.html ----------
-// （密码管理页会校验登录态 + 已确认邮箱，再直接调用 updateUser({password})，不走邮件中转）
-if (btnSetPwd) {
-  btnSetPwd.addEventListener('click', () => {
-    location.href = 'change-password.html';
-  });
-}
+  <!-- ================= 面包屑（路径提示：首页 > 三大中心 > 管理中心） ================= -->
+  <div class="container breadcrumb-wrapper">
+    <nav class="breadcrumb" aria-label="breadcrumb">
+      <span class="crumb" data-level1="home">🏠 众创首页</span>
+      <span class="crumb-sep">›</span>
+      <span class="crumb crumb-level1" id="crumb-level1"></span>
+      <span class="crumb-sep crumb-sep-level2" style="display:none;">›</span>
+      <span class="crumb crumb-level2" id="crumb-level2" style="display:none;"></span>
+    </nav>
+  </div>
 
-async function renderAuthUI() {
-  const { data: { user } } = await supabase.auth.getUser();
-  const loggedIn = !!user;
+  <main id="main-content">
 
-  // 3 个报名 CTA 先更新（哪怕当前页面不是首页，也不影响——找不到元素就跳过）
-  applyCtaButtons(loggedIn);
+    <!-- ============================================================ -->
+    <!-- Level 1 · 众创首页 = Hero + 全息架构图（三大中心+五大协会可视化） -->
+    <!-- ============================================================ -->
+    <section class="page-section active" id="home">
 
-  // 首页欢迎横幅（仅登录 + 不是管理员 + 用户没主动关过才显示）
-  const banner = document.getElementById('welcome-banner');
-  if (banner) {
-    if (loggedIn) {
-      const closed = localStorage.getItem('welcome_banner_closed');
-      const isAdm  = await isCurrentUserAdmin();
-      if (!isAdm && closed !== '1') banner.style.display = 'block';
-      else                           banner.style.display = 'none';
-    } else {
-      banner.style.display = 'none';
-    }
-  }
+      <!-- Hero（毛玻璃面板 + 4 统计 + 2 CTA） -->
+      <section class="hero">
+        <div class="hero-inner glass-panel">
+          <div class="hero-badge">
+            <span class="hero-badge-dot"></span>
+            2026 年度招新 · 零基础友好 · 管理·孵化·科研·竞赛·宣传 一体化
+          </div>
+          <h1 class="hero-title">
+            广西大学<span class="hero-highlight">电气工程学院</span><br/>
+            众创空间 · <span class="hero-gradient-text">「三大中心 · 五大协会」</span>
+          </h1>
+          <p class="hero-subtitle">
+            依托国家级电气工程实验教学示范中心，打造「创意 · 创新 · 创造 · 创业」四位一体教育平台。
+            协会会长兼任职能中心主任，构建管理与专业双轨晋升通道，全方位助力电气学子成长。
+          </p>
+          <div class="hero-stats">
+            <div class="stat-card glass-card">
+              <div class="stat-num text-cyan">3</div>
+              <div class="stat-label">核心职能中心</div>
+            </div>
+            <div class="stat-card glass-card">
+              <div class="stat-num text-gold">5</div>
+              <div class="stat-label">专业技术协会</div>
+            </div>
+            <div class="stat-card glass-card">
+              <div class="stat-num text-cyan">40+</div>
+              <div class="stat-label">国家级竞赛奖项</div>
+            </div>
+            <div class="stat-card glass-card">
+              <div class="stat-num text-gold">SCI/软著/专利</div>
+              <div class="stat-label">硬核成果转化</div>
+            </div>
+          </div>
+          <div class="hero-buttons">
+            <a href="register.html" id="hero-cta-btn" class="btn btn-primary">🚀 立即报名加入</a>
+            <a href="#associations" class="btn btn-outline level1-link" data-target="associations">🔬 五大协会速览 →</a>
+          </div>
+        </div>
+      </section>
 
-  if (!navRight || !navUser) return;
+      <!-- 全息立体架构图（三大中心在上排，五大协会在下排，节点可点击直跳转对应一级+二级Tab） -->
+      <section class="section hologram-section" id="hologram">
+        <div class="section-title">
+          <div class="section-tag">ORG · ARCHITECTURE</div>
+          <h2>全息组织架构 · 「三中心 · 五协会」</h2>
+          <p class="section-desc">管理中心统筹全局 · 创新创业中心孵化竞赛 · 科普实践中心对外志愿，五大协会作为技术/培训/赛事/成果/宣传引擎协同运作。</p>
+        </div>
 
-  if (!loggedIn) {
-    navRight.style.display = '';
-    navUser.style.display = 'none';
-    return;
-  }
+        <div class="holo-grid">
+          <!-- 神经网络主光带 + 分叉连接线（SVG 光束流动动画） -->
+          <svg class="holo-connector" viewBox="0 0 1000 220" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <!-- 主光带渐变：中心亮青 → 两侧淡（带一点金） -->
+              <linearGradient id="beamGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%"   stop-color="#03FCFE" stop-opacity="0.45"/>
+                <stop offset="50%"  stop-color="#03FCFE" stop-opacity="1"/>
+                <stop offset="100%" stop-color="#facc15" stop-opacity="0.4"/>
+              </linearGradient>
+              <!-- 分支渐变：青色 -->
+              <linearGradient id="branchGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%"   stop-color="#03FCFE" stop-opacity="1"/>
+                <stop offset="100%" stop-color="#03FCFE" stop-opacity="0.5"/>
+              </linearGradient>
+            </defs>
 
-  // 已登录
-  navRight.style.display = 'none';
-  navUser.style.display = 'inline-flex';
-  userEmailEl.textContent = user.email;
+            <!-- ① 主光带（三层叠加：外发光光晕 → 主光带 → 内核亮线） -->
+            <line class="holo-beam-glow" x1="80" y1="100" x2="920" y2="100"
+                  stroke="url(#beamGrad)" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+            <line class="holo-beam-core" x1="80" y1="100" x2="920" y2="100"
+                  stroke="#ffffff" stroke-width="0.6" stroke-opacity="0.85" stroke-linecap="round" fill="none"/>
 
-  // 如果是管理员，追加后台入口
-  const admin = await isCurrentUserAdmin();
-  if (admin) {
-    const ul = document.querySelector('.nav-links');
-    if (ul && !document.getElementById('nav-admin-link')) {
-      const li = document.createElement('li');
-      li.id = 'nav-admin-link';
-      li.innerHTML = '<a href="admin.html" style="color:var(--accent-gold);">🛡 审批后台</a>';
-      ul.insertBefore(li, ul.lastElementChild);
-    }
-  }
-}
+            <!-- ② 三中心 → 主光带 垂直连接（3 条） -->
+            <path class="holo-branch" d="M170 0 C 170 40, 180 60, 180 100"
+                  stroke="url(#branchGrad)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path class="holo-branch" d="M500 0 C 500 40, 500 60, 500 100"
+                  stroke="url(#branchGrad)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path class="holo-branch" d="M830 0 C 830 40, 820 60, 820 100"
+                  stroke="url(#branchGrad)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
 
-// 欢迎横幅关闭按钮（只在首页存在）
-const welcomeClose = document.getElementById('welcome-close');
-if (welcomeClose) {
-  welcomeClose.addEventListener('click', () => {
-    const banner = document.getElementById('welcome-banner');
-    if (banner) banner.style.display = 'none';
-    try { localStorage.setItem('welcome_banner_closed', '1'); } catch (_) {}
-  });
-}
+            <!-- ③ 主光带 → 五协会 分叉连接（S 曲线 5 条） -->
+            <path class="holo-branch" d="M80  100 C 80  130, 90 170, 90  220" stroke="url(#branchGrad)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path class="holo-branch" d="M280 100 C 280 135, 275 175, 275 220" stroke="url(#branchGrad)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path class="holo-branch" d="M500 100 C 500 130, 500 170, 500 220" stroke="url(#branchGrad)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path class="holo-branch" d="M720 100 C 720 135, 725 175, 725 220" stroke="url(#branchGrad)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path class="holo-branch" d="M920 100 C 920 130, 910 170, 910 220" stroke="url(#branchGrad)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
 
-if (btnLogout) {
-  btnLogout.addEventListener('click', async () => {
-    await supabase.auth.signOut();
-    location.reload();
-  });
-}
+            <!-- ④ 光带节点发光圆点（3 中心连入点 + 5 协会分叉点 + 2 端点）-->
+            <circle class="holo-node-dot" cx="180" cy="100" r="4" fill="#03FCFE"/>
+            <circle class="holo-node-dot" cx="500" cy="100" r="4" fill="#facc15" style="animation-delay:-0.3s"/>
+            <circle class="holo-node-dot" cx="820" cy="100" r="4" fill="#03FCFE" style="animation-delay:-0.6s"/>
+            <circle class="holo-node-dot" cx="80"  cy="100" r="3" fill="#03FCFE" style="animation-delay:-0.9s"/>
+            <circle class="holo-node-dot" cx="280" cy="100" r="3" fill="#03FCFE" style="animation-delay:-0.2s"/>
+            <circle class="holo-node-dot" cx="720" cy="100" r="3" fill="#03FCFE" style="animation-delay:-0.5s"/>
+            <circle class="holo-node-dot" cx="920" cy="100" r="3" fill="#03FCFE" style="animation-delay:-0.8s"/>
+          </svg>
 
-// 初始渲染
-renderAuthUI();
+          <!-- 上排：三大中心（对应二级Tab centers） -->
+          <div class="holo-row holo-row-top" aria-label="三大中心">
+            <a class="holo-node center-node glass-card"
+               data-goto-level1="centers" data-goto-level2="management">
+              <div class="holo-icon">
+                <!-- 线性大脑+枢纽（管理） -->
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M9.5 2A3.5 3.5 0 0 0 6 5.5v.05A3.5 3.5 0 0 0 4 8.5 3.5 3.5 0 0 0 5.5 13 3.5 3.5 0 0 0 7 15.5V16a3.5 3.5 0 0 0 3.5 3.5v0A3.5 3.5 0 0 0 14 16v-.5a3.5 3.5 0 0 0 1.5-2.5 3.5 3.5 0 0 0 1.5-2.5 3.5 3.5 0 0 0-2-3.45V5.5A3.5 3.5 0 0 0 10 2h-.5zM8 8h.01M16 8h.01M12 6h.01M8 12h.01M16 12h.01M12 18h.01"/>
+                  <path d="M12 6V4M12 22v-2M4.5 9.5H2.5M21.5 9.5h-2M4.5 14.5H2.5M21.5 14.5h-2"/>
+                </svg>
+              </div>
+              <div class="holo-title">管理中心</div>
+              <div class="holo-sub">大脑 · 枢纽</div>
+              <div class="holo-tags"><span>组织部</span><span>外联部</span><span>北苑实验室</span></div>
+            </a>
+            <a class="holo-node center-node glass-card"
+               data-goto-level1="centers" data-goto-level2="innovation">
+              <div class="holo-icon">
+                <!-- 线性火箭+奖杯（创新创业） -->
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7.9 1.8 1.5 3 1.8v2.2h5v-2.2c2-.4 3.7-1.6 4.7-3.3l-1.5-1.5A6 6 0 0 1 7 12h0L5.5 4l-8 8 8 8 1.5-1.5c-1.2 0-2.3-.6-3-1.5h-.5z"/>
+                  <path d="M8 13l6-6 3 3-6 6H8v-3z"/>
+                  <circle cx="18" cy="6" r="1.5"/>
+                </svg>
+              </div>
+              <div class="holo-title">创新创业中心</div>
+              <div class="holo-sub">入孵 · A+类竞赛</div>
+              <div class="holo-tags"><span>互联网+</span><span>挑战杯</span><span>大创</span></div>
+            </a>
+            <a class="holo-node center-node glass-card"
+               data-goto-level1="centers" data-goto-level2="popular">
+              <div class="holo-icon">
+                <!-- 线性麦克风+望远镜（科普/志愿/路演） -->
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 13a3 3 0 0 0 3-3V4a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/>
+                  <path d="M4 10v0a8 8 0 0 0 16 0M10 21h4M12 17v4"/>
+                  <path d="M20 14l2 3-3 1-1 3-3-2 2-3 3-2z" transform="translate(-1 -3) scale(0.75)"/>
+                </svg>
+              </div>
+              <div class="holo-title">科普实践中心</div>
+              <div class="holo-sub">志愿 · 科研 · 路演</div>
+              <div class="holo-tags"><span>智电宣讲团</span><span>科普进校园</span><span>柔性机械手</span></div>
+            </a>
+          </div>
 
-// 监听登录状态变化
-supabase.auth.onAuthStateChange(() => renderAuthUI());
+          <!-- 下排：五大专业协会（对应二级Tab associations） -->
+          <div class="holo-row holo-row-bottom" aria-label="五大专业协会">
+            <a class="holo-node ass-node glass-card"
+               data-goto-level1="associations" data-goto-level2="air">
+              <div class="holo-icon">
+                <!-- 线性机器人头（AI&机器人） -->
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="4" y="6" width="16" height="12" rx="3"/>
+                  <path d="M12 3v3M8 22v-3M16 22v-3M3 11h1v2M20 11h1v2"/>
+                  <circle cx="9" cy="12" r="1.2"/>
+                  <circle cx="15" cy="12" r="1.2"/>
+                  <path d="M9 15h6"/>
+                </svg>
+              </div>
+              <div class="holo-title">人工智能与机器人协会</div>
+              <div class="holo-sub">技术中心</div>
+              <div class="holo-tags"><span>VR/机械臂</span><span>国家级一等奖</span><span>软著</span></div>
+            </a>
+            <a class="holo-node ass-node glass-card"
+               data-goto-level1="associations" data-goto-level2="geek">
+              <div class="holo-icon">
+                <!-- 线性芯片+齿轮（电子） -->
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="6" y="6" width="12" height="12" rx="1.5"/>
+                  <path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3M9 10h6M9 14h6"/>
+                  <circle cx="12" cy="12" r="2.5"/>
+                  <path d="M12 9.5v5M9.5 12h5"/>
+                </svg>
+              </div>
+              <div class="holo-title">奇客电子协会</div>
+              <div class="holo-sub">培训中心</div>
+              <div class="holo-tags"><span>单片机</span><span>无人船</span><span>特等奖</span></div>
+            </a>
+            <a class="holo-node ass-node glass-card"
+               data-goto-level1="associations" data-goto-level2="powergrid">
+              <div class="holo-icon">
+                <!-- 线性闪电+电网波浪（电力系统） -->
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>
+                  <path d="M3 19c.8-.7 1.8-1 3-1s2.2.3 3 1 1.8 1 3 1 2.2-.3 3-1 1.8-1 3-1 2.2.3 3 1"/>
+                </svg>
+              </div>
+              <div class="holo-title">电力系统与智能电网</div>
+              <div class="holo-sub">赛事中心</div>
+              <div class="holo-tags"><span>数学建模国一</span><span>SCI二区</span><span>保研加分</span></div>
+            </a>
+            <a class="holo-node ass-node glass-card"
+               data-goto-level1="associations" data-goto-level2="electronics">
+              <div class="holo-icon">
+                <!-- 线性电池+电感线圈（电力电子） -->
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="3" y="8" width="16" height="10" rx="1.5"/>
+                  <path d="M19 11h2v4h-2M7 11v4M10 11v4M13 11v4M16 11v4"/>
+                  <path d="M6 4c1.5 0 1.5 2 3 2s1.5-2 3-2 1.5 2 3 2 1.5-2 3-2" fill="none"/>
+                </svg>
+              </div>
+              <div class="holo-title">电力电子爱好者协会</div>
+              <div class="holo-sub">成果转化中心</div>
+              <div class="holo-tags"><span>西门子杯</span><span>PLC</span><span>机器视觉</span></div>
+            </a>
+            <a class="holo-node ass-node glass-card"
+               data-goto-level1="associations" data-goto-level2="iot">
+              <div class="holo-icon">
+                <!-- 线性卫星信号（物联网） -->
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="12" cy="12" r="2"/>
+                  <path d="M7.5 7.5a6.4 6.4 0 0 1 9 0M4.9 4.9a10 10 0 0 1 14.2 0M16.5 16.5a6.4 6.4 0 0 1-9 0M19.1 19.1a10 10 0 0 1-14.2 0"/>
+                  <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+                </svg>
+              </div>
+              <div class="holo-title">物联网与虚拟仪器</div>
+              <div class="holo-sub">科创媒体中心</div>
+              <div class="holo-tags"><span>无人机识别</span><span>水质监测</span><span>新媒体宣发</span></div>
+            </a>
+          </div>
+        </div>
+        <p class="holo-hint">💡 点击上方任一中心 / 协会卡片，直接跳转到对应详情页</p>
+      </section>
+    </section>
 
-// ======== 兼容：把 main.js 依赖的 3 个接口挂到 window（否则 ES module 隔离后，main.js 拿不到） ========
-window.CTA_BTN_IDS = CTA_BTN_IDS;
-window.applyCtaButtons = applyCtaButtons;
-window.isCurrentUserLoggedIn = async () => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    return !!user;
-  } catch (_) {
-    return false;
-  }
-};
+    <!-- ============================================================ -->
+    <!-- Level 1 · 三大中心（二级胶囊Tab：管理/创新创业/科普实践）       -->
+    <!-- ============================================================ -->
+    <section class="page-section" id="centers">
+      <div class="container">
+        <div class="section-title">
+          <div class="section-tag">THREE · CENTERS</div>
+          <h2>三大核心中心</h2>
+          <p class="section-desc">管理驱动 · 创新孵化 · 科普实践，三方协同保障众创空间高效运转</p>
+        </div>
+
+        <!-- 二级胶囊 Tab -->
+        <div class="capsule-tabs center-tabs" id="center-tabs">
+          <button class="capsule-tab active" data-target="management">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A3.5 3.5 0 0 0 6 5.5v.05A3.5 3.5 0 0 0 4 8.5 3.5 3.5 0 0 0 5.5 13 3.5 3.5 0 0 0 7 15.5V16a3.5 3.5 0 0 0 3.5 3.5v0A3.5 3.5 0 0 0 14 16v-.5a3.5 3.5 0 0 0 1.5-2.5 3.5 3.5 0 0 0 1.5-2.5 3.5 3.5 0 0 0-2-3.45V5.5A3.5 3.5 0 0 0 10 2h-.5z"/></svg>
+            管理中心
+          </button>
+          <button class="capsule-tab"        data-target="innovation">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7.9 1.8 1.5 3 1.8v2.2h5v-2.2c2-.4 3.7-1.6 4.7-3.3l-1.5-1.5A6 6 0 0 1 7 12h0L5.5 4l-8 8 8 8 1.5-1.5c-1.2 0-2.3-.6-3-1.5h-.5zM8 13l6-6 3 3-6 6H8v-3z"/></svg>
+            创新创业中心
+          </button>
+          <button class="capsule-tab"        data-target="popular">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a3 3 0 0 0 3-3V4a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zM4 10a8 8 0 0 0 16 0M10 21h4M12 17v4"/></svg>
+            科普实践中心
+          </button>
+        </div>
+
+        <!-- Tab 面板（带 slide / fade 动效） -->
+        <div class="tab-panels" id="center-panels">
+
+          <!-- 管理中心 -->
+          <div class="tab-panel active glass-panel" data-id="management">
+            <div class="panel-header">
+              <h3 class="panel-title">管理中心 · 众创空间的「大脑与枢纽」</h3>
+              <p class="panel-sub">统筹协调 · 规范考核 · 资源连接 · 北苑实验室日常管理</p>
+            </div>
+            <div class="panel-grid">
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V5M10 19V9M16 19v-6M22 19H2"/></svg>
+                </div>
+                <h4>内部治理</h4>
+                <p>下设<b>组织部与对外联络部</b>，统筹各社团考核与管理，制定规范保证组织良性运转。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="7" width="16" height="12" rx="1"/><path d="M9 22v-8M15 22v-8M9 3v4M15 3v4M7 11h2M15 11h2M7 15h2M15 15h2"/></svg>
+                </div>
+                <h4>实验室运营</h4>
+                <p><b>兼顾北苑实验室日常管理事宜</b>，保障实验资源高效开放、设备维护规范。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 8H3V6h18v2zM3 10h18v6H3zM21 18H3v2h18v-2zM17 13v-1M19 13v-1"/></svg>
+                </div>
+                <h4>财务与团建</h4>
+                <p>负责财务统筹、内部团建策划执行，营造温馨团结的团队氛围和归属感。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8 12c-1.7 0-3-1.1-3-2.5S6.3 7 8 7s3 1.1 3 2.5S9.7 12 8 12zM16 12c-1.7 0-3-1.1-3-2.5S14.3 7 16 7s3 1.1 3 2.5-1.3 2.5-3 2.5z"/><path d="M2 17c.8-1.8 2.8-3 5.5-3s4.7 1.2 5.5 3M11 17c.8-1.8 2.8-3 5.5-3s4.7 1.2 5.5 3"/></svg>
+                </div>
+                <h4>对外联络</h4>
+                <p>通过对外联络部积极对接<b>企业与社会资源</b>，为成员争取广阔的交流与实习平台。</p>
+              </div>
+              <div class="feature-card glass-card highlight-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2"/></svg>
+                </div>
+                <h4>你能收获</h4>
+                <p>强调「<b>管理 + 智能 + AI</b>」融合思维，快速提升<b>统筹能力 / 人际交往 / 全局观</b>，结识志同道合的精英伙伴。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 创新创业中心 -->
+          <div class="tab-panel glass-panel" data-id="innovation">
+            <div class="panel-header">
+              <h3 class="panel-title">创新创业中心 · 竞赛与项目孵化引擎</h3>
+              <p class="panel-sub">A+类竞赛全流程跟进 · 大创立项培训 · 创业梦落地平台</p>
+            </div>
+            <div class="panel-grid">
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 3c-3 0-5 2.5-5 5.5C7 11.5 9 14 12 14s5-2.5 5-5.5C17 5.5 15 3 12 3z"/><path d="M12 14v2M10 22h4l-1-5h-2l-1 5zM5 13l-2 2M19 13l2 2"/></svg>
+                </div>
+                <h4>团队入孵</h4>
+                <p>负责创新创业团队的<b>入孵管理与协调</b>，提供场地、导师、资源对接一站式服务。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M7 4h10v3c0 2.5-1.8 4.6-4.2 4.9V15H17v2H7v-2h4.2V11.9C8.8 11.6 7 9.5 7 7V4zM4 5h2v2c0 1.2-.3 2.2-.9 3L3 11M20 5h-2v2c0 1.2.3 2.2.9 3L21 11M10 20h4M12 17v3"/></svg>
+                </div>
+                <h4>A+类竞赛主导</h4>
+                <p>重点主导<b>「互联网+」「挑战杯」</b>等高含金量 A+类竞赛，以及<b>大创项目</b>的报名、培训与跟进。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 5h12a2 2 0 0 1 2 2v11H6a2 2 0 0 1-2-2V5z"/><path d="M8 8h8M8 12h8M8 16h5M20 8h1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-1"/></svg>
+                </div>
+                <h4>经验分享会</h4>
+                <p>定期举办「大创项目进展和结题说明会」，由导师与学长学姐分享<b>竞赛获奖、项目运营、创业成功</b>经验。</p>
+              </div>
+              <div class="feature-card glass-card highlight-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9 17h6M12 18v3M10 13a4 4 0 1 1 3.5-6 3.2 3.2 0 0 1 2.8 3.3c0 1.5-1 2.3-2.3 2.7h-1a1.8 1.8 0 0 0-1.6 1.8V15"/></svg>
+                </div>
+                <h4>你能收获</h4>
+                <p>开放活力的氛围，鼓励突破常规，让创新思维碰撞火花，<b>每一个创业梦想都能从这里真正落地生根</b>。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 科普实践中心 -->
+          <div class="tab-panel glass-panel" data-id="popular">
+            <div class="panel-header">
+              <h3 class="panel-title">科普实践中心 · 西大青年智电宣讲团暨志愿服务队</h3>
+              <p class="panel-sub">志愿科技服务 · 硬核科研实操 · 大型展会路演交流</p>
+            </div>
+            <div class="panel-grid">
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M5 4h14v14H5z"/><path d="M9 20h6M12 18v2M8 9h8M8 12h8M8 15h4"/></svg>
+                </div>
+                <h4>科普志愿服务</h4>
+                <p>常年组织<b>科普进校园（中小学生）/ 社区宣传 / 下乡调研</b>等一线志愿活动，面向社会传播电气科技。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9 3h6v2H9zM10 5v7.5a3.5 3.5 0 1 1-4 0V8M14 5v7.5a3.5 3.5 0 1 0 4 0V8"/></svg>
+                </div>
+                <h4>硬核科研实操</h4>
+                <p>机器人组装、电路调试、<b>水下机器人测试</b>等多类硬件实战，科研素养从零基础到上手。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M10 13a3 3 0 0 0 3-3V4a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zM4 10a8 8 0 0 0 16 0M10 21h4M12 17v4"/></svg>
+                </div>
+                <h4>讲座与路演</h4>
+                <p>推进青年学术讲座（教授学长面对面）+ 大型科技展会路演，展示前沿成果如<b>基于手部触觉的柔性机械手</b>。</p>
+              </div>
+              <div class="feature-card glass-card highlight-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </div>
+                <h4>三面成长理念</h4>
+                <p>「一面搞<b>志愿</b>，科技服务于人民；一面做<b>科研</b>，科技来源于实践；一面见<b>大佬</b>，科技发展于交流」。表达 / 组织 / 科研素养全面提升。</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- Level 1 · 五大专业协会（二级胶囊Tab：5个协会）                 -->
+    <!-- ============================================================ -->
+    <section class="page-section" id="associations">
+      <div class="container">
+        <div class="section-title">
+          <div class="section-tag">FIVE · ASSOCIATIONS</div>
+          <h2>五大专业技术协会</h2>
+          <p class="section-desc">技术·培训·赛事·成果·宣传 五大引擎协同驱动，零基础也能一路通关到国奖</p>
+        </div>
+
+        <!-- 二级胶囊 Tab -->
+        <div class="capsule-tabs ass-tabs" id="ass-tabs">
+          <button class="capsule-tab active" data-target="air">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="3"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><path d="M12 3v3M8 22v-3M16 22v-3M9 15h6"/></svg>
+            人工智能与机器人
+          </button>
+          <button class="capsule-tab"        data-target="geek">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/><circle cx="12" cy="12" r="2.5"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg>
+            奇客电子
+          </button>
+          <button class="capsule-tab"        data-target="powergrid">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>
+            电力系统与智能电网
+          </button>
+          <button class="capsule-tab"        data-target="electronics">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="16" height="10" rx="1.5"/><path d="M19 11h2v4h-2M7 11v4M10 11v4M13 11v4M16 11v4"/></svg>
+            电力电子爱好者
+          </button>
+          <button class="capsule-tab"        data-target="iot">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M7.5 7.5a6.4 6.4 0 0 1 9 0M4.9 4.9a10 10 0 0 1 14.2 0M16.5 16.5a6.4 6.4 0 0 1-9 0M19.1 19.1a10 10 0 0 1-14.2 0"/></svg>
+            物联网与虚拟仪器
+          </button>
+        </div>
+
+        <!-- Tab 面板 -->
+        <div class="tab-panels" id="ass-panels">
+
+          <!-- 1 人工智能与机器人协会 -->
+          <div class="tab-panel active glass-panel" data-id="air">
+            <div class="panel-header">
+              <span class="panel-role-tag role-tech">【 技术中心 】</span>
+              <h3 class="panel-title">人工智能与机器人协会</h3>
+              <p class="panel-sub">人机交互 · 虚拟现实 · 机械臂 · 机器人 · 人工智能 · 多学科深度融合</p>
+            </div>
+            <div class="panel-grid">
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-1.8 1.8L14.7 6.3zM16 3l2 2M10 5V3M5 10H3M5 15l-2 1M19 14v3M17 20l-2 1"/></svg>
+                </div>
+                <h4>核心技术方向</h4>
+                <p>人机交互(HCI)、VR/AR、机械臂控制、移动机器人、深度学习、计算机视觉等<b>多学科融合</b>前沿领域。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l2.4 4.9L20 7.5l-4 3.9.9 5.6L12 14.8 7.1 17l.9-5.6L4 7.5l5.6-.6L12 2z"/></svg>
+                </div>
+                <h4>资源优先</h4>
+                <p>作为<b>技术中心</b>，优先获得众创空间实验资源，直接对接<b>导师与国家级竞赛平台</b>，攻关前沿技术。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M5 20c2-4 4-5 6-7s3-3 3-5a2.5 2.5 0 0 0-5 0M12 22c2-4 4-6 6-8s3-4 3-6a2.5 2.5 0 0 0-5 0"/></svg>
+                </div>
+                <h4>零基础友好</h4>
+                <p>从理论学习 → 硬件组装 → 户外调试 → 仿真测试，开放交流协作机制，<b>系统性培养创新能力与工程思维</b>。</p>
+              </div>
+              <div class="feature-card glass-card highlight-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M7 4h10v3c0 2.5-1.8 4.6-4.2 4.9V15H17v2H7v-2h4.2V11.9C8.8 11.6 7 9.5 7 7V4zM4 5h2v2c0 1.2-.3 2.2-.9 3L3 11M20 5h-2v2c0 1.2.3 2.2.9 3L21 11M10 20h4M12 17v3"/></svg>
+                </div>
+                <h4>硬核成果</h4>
+                <p>多项<b>国家级 / 省级一等奖</b>、多项<b>计算机软件著作权</b>，切实提升保研、校招简历核心竞争力。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2 奇客电子协会 -->
+          <div class="tab-panel glass-panel" data-id="geek">
+            <div class="panel-header">
+              <span class="panel-role-tag role-training">【 培训中心 】</span>
+              <h3 class="panel-title">奇客电子协会</h3>
+              <p class="panel-sub">单片机开发 · 嵌入式系统 · 智能硬件 · 电子制作 · 全空间基础技能培训</p>
+            </div>
+            <div class="panel-grid">
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l7 4"/></svg>
+                </div>
+                <h4>核心定位</h4>
+                <p>深耕电子技术应用与创新；作为<b>培训中心</b>承担全空间<b>基础技能培训</b>的公共职责。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14 4l4 4-8 8H6v-4l8-8z"/><path d="M3 21l3-3M22 4l-3 3"/></svg>
+                </div>
+                <h4>学习路径</h4>
+                <p>从调试第一块单片机开始，掌握<b>智能小车控制逻辑</b>，亲手焊接电路、设计硬件模块，<b>把奇思妙想变成实物作品</b>。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 17l2-3h14l2 3v3H3v-3zM12 14V4M7.5 9l9 0"/></svg>
+                </div>
+                <h4>明星项目</h4>
+                <p><b>水蓝之翼无人船</b> / Mini 平衡小车 / Ucar 二代智能车，多类成熟项目直接上手。</p>
+              </div>
+              <div class="feature-card glass-card highlight-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="10" r="6"/><path d="M8 14l-1 7h10l-1-7"/></svg>
+                </div>
+                <h4>顶级奖项</h4>
+                <p>荣获<b>第十三届中国智能机器人设计制作大赛特等奖</b>等多个国家级 / 省级奖项及冠军奖杯。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3 电力系统与智能电网协会 -->
+          <div class="tab-panel glass-panel" data-id="powergrid">
+            <div class="panel-header">
+              <span class="panel-role-tag role-competition">【 赛事中心 】</span>
+              <h3 class="panel-title">电力系统与智能电网协会</h3>
+              <p class="panel-sub">电力 + 智能 + 控制 + AI 多学科融合 · 重大赛事组织 / 选拔 / 集训</p>
+            </div>
+            <div class="panel-grid">
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2"/></svg>
+                </div>
+                <h4>核心定位</h4>
+                <p>作为<b>赛事中心</b>，全面统筹众创空间的重大赛事<b>组织 · 队伍选拔 · 集训工作</b>。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 17l5-5 4 4 7-8"/><path d="M14 8h6v6"/><path d="M3 21V3h18"/></svg>
+                </div>
+                <h4>培训 & 机会</h4>
+                <p>提供针对性竞赛培训与参赛机会，包容零基础，随时交流，快速解决学习竞赛卡点。</p>
+              </div>
+              <div class="feature-card glass-card highlight-card big-result">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M7 4h10v3c0 2.5-1.8 4.6-4.2 4.9V15H17v2H7v-2h4.2V11.9C8.8 11.6 7 9.5 7 7V4zM4 5h2v2c0 1.2-.3 2.2-.9 3L3 11M20 5h-2v2c0 1.2.3 2.2.9 3L21 11M10 20h4M12 17v3"/></svg>
+                </div>
+                <h4>硬核成果清单</h4>
+                <ul class="result-list">
+                  <li>🏅 <b>数学建模</b>类竞赛 <span class="cyan">国家一等奖 2 项</span>、<span class="gold">省级 7 项</span></li>
+                  <li>🏅 <b>高校电气电子工程创新大赛</b> 国家级 1 项、省级 4 项</li>
+                  <li>🏅 <b>机器人</b>相关竞赛 国家级 2 项、省级 2 项</li>
+                  <li>📑 <b>大创立项</b> 20 余项 · <b>SCI 二区论文</b> 2 篇 · <b>发明专利</b> 5 项</li>
+                </ul>
+              </div>
+              <div class="feature-card glass-card highlight-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 10l8-4 8 4v4c0 5-3.5 8-8 8s-8-3-8-8v-4zM2 10h20M8 10v4M16 10v4"/></svg>
+                </div>
+                <h4>直接价值</h4>
+                <p>不仅结识战友、充实简历，更能<b>直接获得保研加分与综测加分</b>，为升学深造打下坚实基础。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4 电力电子爱好者协会 -->
+          <div class="tab-panel glass-panel" data-id="electronics">
+            <div class="panel-header">
+              <span class="panel-role-tag role-achieve">【 成果转化中心 】</span>
+              <h3 class="panel-title">电力电子爱好者协会</h3>
+              <p class="panel-sub">学术 · 实践 · 创新 · 挑战 · 实验室成果 → 实际应用转化</p>
+            </div>
+            <div class="panel-grid">
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2"/></svg>
+                </div>
+                <h4>核心定位</h4>
+                <p>作为<b>成果转化中心</b>，将实验室优秀科研成果向实际应用转化，重点孵化<b>高含金量学科竞赛</b>。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M7 4h10v3c0 2.5-1.8 4.6-4.2 4.9V15H17v2H7v-2h4.2V11.9C8.8 11.6 7 9.5 7 7V4zM4 5h2v2c0 1.2-.3 2.2-.9 3L3 11M20 5h-2v2c0 1.2.3 2.2.9 3L21 11M10 20h4M12 17v3"/></svg>
+                </div>
+                <h4>目标赛事</h4>
+                <p>节能减排竞赛、光电设计竞赛、电子设计竞赛、信息通信类竞赛；重点打磨<b>「互联网+」「西门子杯」「台达杯」</b>等。</p>
+              </div>
+              <div class="feature-card glass-card highlight-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 2A3.5 3.5 0 0 0 6 5.5v.05A3.5 3.5 0 0 0 4 8.5 3.5 3.5 0 0 0 5.5 13 3.5 3.5 0 0 0 7 15.5V16a3.5 3.5 0 0 0 3.5 3.5v0A3.5 3.5 0 0 0 14 16v-.5a3.5 3.5 0 0 0 1.5-2.5 3.5 3.5 0 0 0 1.5-2.5 3.5 3.5 0 0 0-2-3.45V5.5A3.5 3.5 0 0 0 10 2h-.5zM8 8h.01M16 8h.01M12 6h.01M8 12h.01M16 12h.01"/></svg>
+                </div>
+                <h4>核心研究方向</h4>
+                <p>覆盖<b>单片机、PLC（可编程逻辑控制器）及机器视觉</b>，极大程度提高动手能力与探索精神。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l2 5 5 1-4 4 1 6-4-2-4 2 1-6-4-4 5-1 2-5z"/></svg>
+                </div>
+                <h4>培养目标</h4>
+                <p>致力于培养<b>实操能力极强的创新型人才</b>，毕业时能直接对接工业界与科研院所需求。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5 物联网与虚拟仪器协会 -->
+          <div class="tab-panel glass-panel" data-id="iot">
+            <div class="panel-header">
+              <span class="panel-role-tag role-media">【 科创媒体中心 】</span>
+              <h3 class="panel-title">物联网与虚拟仪器协会</h3>
+              <p class="panel-sub">物联网感知 + 虚拟仪器智能测量融合创新 · 科普推广 + 新媒体宣传 + 软著申报</p>
+            </div>
+            <div class="panel-grid">
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2"/></svg>
+                </div>
+                <h4>核心定位</h4>
+                <p>作为<b>科创媒体中心</b>，负责全空间科普推广与新媒体宣发，并深度参与国创项目的<b>软件著作权申报 / 专利发明</b>。</p>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6V3z"/></svg>
+                </div>
+                <h4>上手友好</h4>
+                <p>物联网感知技术与虚拟仪器智能测量的融合创新，<b>上手简单、人机交互友好</b>，新成员快速入门。</p>
+              </div>
+              <div class="feature-card glass-card highlight-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M4 10h16M8 14h4M8 17h8"/></svg>
+                </div>
+                <h4>明星项目群</h4>
+                <ul class="result-list">
+                  <li>🌱 农作物病虫害监测项目</li>
+                  <li>🚁 无人机图像识别项目</li>
+                  <li>💧 水质检测项目</li>
+                  <li>🚗 探索者小车项目</li>
+                </ul>
+              </div>
+              <div class="feature-card glass-card">
+                <div class="feature-ic">
+                  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </div>
+                <h4>能力 & 成果</h4>
+                <p>全面掌握硬件与软件编程，拓展物联网与虚拟仪器视野；<b>在丰富实战中收获软著、专利等多元成果</b>。</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- Level 1 · 招新报名（CTA 区 + 报名流程 + 登录态动态按钮）       -->
+    <!-- ============================================================ -->
+    <section class="page-section" id="signup">
+      <div class="container signup-container">
+        <div class="signup-glass glass-panel">
+          <div class="section-title">
+            <div class="section-tag">2026 · RECRUITMENT</div>
+            <h2>2026 年度招新 · 正式开启</h2>
+            <p class="section-desc">零基础不是门槛，敢想敢拼才是通行证。三步加入众创空间。</p>
+          </div>
+
+          <div class="steps-grid">
+            <div class="step-card glass-card">
+              <div class="step-num"><span>01</span></div>
+              <h4>📮 邮箱验证登录</h4>
+              <p>使用真实校园 / QQ 邮箱接收 8 位验证码登录，确保邮箱真实有效。</p>
+            </div>
+            <div class="step-card glass-card">
+              <div class="step-num"><span>02</span></div>
+              <h4>📝 填写身份信息</h4>
+              <p>选择心仪的中心 & 协会志愿，上传个人背景与技能（可设置密码方便后续登录）。</p>
+            </div>
+            <div class="step-card glass-card">
+              <div class="step-num"><span>03</span></div>
+              <h4>✅ 48h 邮件答复</h4>
+              <p>管理员后台审批通过后，邮箱自动收到录取与面试通知，随时可登录页查看进度。</p>
+            </div>
+          </div>
+
+          <div class="signup-actions">
+            <a href="login.html?redirect=register.html" id="hero-secondary-cta-btn" class="btn btn-primary btn-large">
+              🔐 登录后报名
+            </a>
+            <a href="register.html" id="hero-fill-cta-btn" class="btn btn-outline btn-large">
+              📋 已登录？直接填写报名表
+            </a>
+            <a href="change-password.html" id="hero-pwd-btn" class="btn btn-gold btn-large" style="display:none;">
+              🔑 设置登录密码
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- Level 1 · 关于我们（空间整体介绍 + 4 大加入收获卡片）           -->
+    <!-- ============================================================ -->
+    <section class="page-section" id="about">
+      <div class="container">
+        <div class="section-title">
+          <div class="section-tag">ABOUT · US</div>
+          <h2>关于众创空间 · 加入你将获得</h2>
+          <p class="section-desc">四位一体四创平台，管理、孵化、科研、竞赛、宣传一体化闭环</p>
+        </div>
+
+        <div class="about-intro glass-panel">
+          <p style="line-height:2;font-size:1.05rem;">
+            广西大学电气工程学院众创空间依托 <b style="color:var(--accent-cyan)">国家级电气工程实验教学示范中心</b>，
+            以<b>科技项目计划</b>为重要牵引，致力于打造「四位一体」的
+            <b style="color:var(--accent-gold)">创意 · 创新 · 创造 · 创业（四创）</b>全流程创新创业教育平台。
+            各协会会长兼任众创空间的职能中心主任，构建了管理、孵化、科研、竞赛、宣传一体化的完整闭环，
+            全方位助力电气学子从零基础到获奖保研的成长之路。
+          </p>
+        </div>
+
+        <div class="benefits-grid" style="margin-top:40px;">
+          <div class="benefit-card glass-card">
+            <div class="benefit-ic">
+              <!-- 勋章带星（高规格职级身份） -->
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2l2.4 4.9L20 7.5l-4 3.9.9 5.6L12 14.8 7.1 17l.9-5.6L4 7.5l5.6-.6L12 2z"/>
+                <path d="M8 21v-3M12 22v-6M16 21v-3"/>
+              </svg>
+            </div>
+            <h4>高规格职级身份</h4>
+            <p>三大中心 / 五大协会正式成员身份，协会会长兼任职能中心主任，<b>管理 + 专业双轨晋升通道</b>。</p>
+          </div>
+          <div class="benefit-card glass-card">
+            <div class="benefit-ic">
+              <!-- 趋势线（综测保研加分） -->
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 17l5-5 4 4 7-8"/>
+                <path d="M14 8h6v6"/>
+                <path d="M3 21V3h18"/>
+              </svg>
+            </div>
+            <h4>综测 & 保研加分</h4>
+            <p>A+类竞赛、大创立项、SCI 论文、发明专利、软件著作权多元产出，<b>直接助力升学加分</b>。</p>
+          </div>
+          <div class="benefit-card glass-card">
+            <div class="benefit-ic">
+              <!-- 多人协作（顶级专业人脉） -->
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="8" cy="9" r="3.2"/>
+                <circle cx="16" cy="9" r="3.2"/>
+                <path d="M2 20c0-3 2.8-5 6-5s6 2 6 5v1H2v-1zM10 15c3.2 0 6 2 6 5v1h9v-1c0-3.3-3.5-5.5-7.2-5.2"/>
+              </svg>
+            </div>
+            <h4>顶级专业人脉</h4>
+            <p>对接资深导师、竞赛国奖学长、企业与社会资源；<b>结识志同道合的精英战友</b>。</p>
+          </div>
+          <div class="benefit-card glass-card">
+            <div class="benefit-ic">
+              <!-- 奖杯（国家级竞赛舞台） -->
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M7 4h10v3c0 2.5-1.8 4.6-4.2 4.9V15H17v2H7v-2h4.2V11.9C8.8 11.6 7 9.5 7 7V4zM4 5h2v2c0 1.2-.3 2.2-.9 3L3 11M20 5h-2v2c0 1.2.3 2.2.9 3L21 11M10 20h4M12 17v3"/>
+              </svg>
+            </div>
+            <h4>国家级竞赛舞台</h4>
+            <p>互联网+ / 挑战杯 / 数学建模 / 西门子杯 / 机器人等顶级平台，<b>从零基础到国家级奖项系统培养</b>。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>© 2026 广西大学电气工程学院 · 众创空间 招新系统</div>
+      <div style="color:var(--text-muted);font-size:0.85rem;">
+        技术支持：众创空间
+      </div>
+    </div>
+  </footer>
+
+  <!-- ============ 脚本：必须按顺序加载！（全部为 ES Modules：使用 import/export） ============ -->
+  <script type="module" src="js/supabase-init.js"></script>
+  <script type="module" src="js/auth.js"></script>
+  <script type="module" src="js/notice.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
