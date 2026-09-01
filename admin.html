@@ -135,12 +135,19 @@
             <label>意向方向</label>
             <select id="filter-dept" class="form-control">
               <option value="">全部方向</option>
-              <option value="机器人研发">🤖 机器人研发</option>
-              <option value="人工智能">🧠 人工智能</option>
-              <option value="虚拟现实VR">🥽 虚拟现实 VR</option>
-              <option value="人机交互HCI">🖐️ 人机交互 HCI</option>
-              <option value="机械臂开发">🦾 机械臂开发</option>
-              <option value="暂不确定">🌱 暂不确定</option>
+              <optgroup label="📊 三大中心">
+                <option value="管理中心">📊 管理中心</option>
+                <option value="创新创业中心">🚀 创新创业中心</option>
+                <option value="科普实践中心">🌱 科普实践中心</option>
+              </optgroup>
+              <optgroup label="🤖 五大协会">
+                <option value="人工智能与机器人协会">🤖 人工智能与机器人协会</option>
+                <option value="奇客电子协会">⚡ 奇客电子协会</option>
+                <option value="电力系统与智能电网协会">🔌 电力系统与智能电网协会</option>
+                <option value="电力电子爱好者协会">💡 电力电子爱好者协会</option>
+                <option value="物联网与虚拟仪器协会">🛰️ 物联网与虚拟仪器协会</option>
+              </optgroup>
+              <option value="暂不确定">❓ 暂不确定</option>
             </select>
           </div>
           <div class="form-group grow">
@@ -177,6 +184,71 @@
       <div class="admin-tab-panel" id="tab-panel-users" data-role="super">
 
         <div class="glass-card section-card">
+          <div class="section-card-header">
+            <div>
+              <div class="card-tag">ASSOC ADMIN · QUOTA CONTROL</div>
+              <h2>🔷 协会管理员分配</h2>
+              <p class="section-desc-left">为每个协会分配管理员（每协会最多 4 名）。被分配后，该管理员登录后台只能看到本协会的报名申请。
+                <span style="color:var(--accent-cyan);">总管理员（无协会标记）可查看全部报名。</span>
+              </p>
+            </div>
+          </div>
+
+          <!-- 协会名额状态 -->
+          <div id="assoc-quota-status" class="quota-status-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px;">
+            <div class="empty" style="grid-column:1/-1;">加载中...</div>
+          </div>
+
+          <!-- 分配表单 -->
+          <div class="assign-form glass-card-inner" style="margin-bottom:20px;">
+            <h3 style="margin:0 0 14px 0;font-size:1rem;">📋 分配协会管理员</h3>
+            <div class="form-row" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+              <div class="form-group" style="flex:1;min-width:200px;">
+                <label>选择用户（邮箱）</label>
+                <input type="text" id="assign-user-email" class="form-control" placeholder="输入用户邮箱..." />
+              </div>
+              <div class="form-group" style="flex:1;min-width:200px;">
+                <label>分配协会</label>
+                <select id="assign-association" class="form-control">
+                  <option value="" disabled selected>— 选择协会 —</option>
+                  <option value="管理中心">📊 管理中心</option>
+                  <option value="创新创业中心">🚀 创新创业中心</option>
+                  <option value="科普实践中心">🌱 科普实践中心</option>
+                  <option value="人工智能与机器人协会">🤖 人工智能与机器人协会</option>
+                  <option value="奇客电子协会">⚡ 奇客电子协会</option>
+                  <option value="电力系统与智能电网协会">🔌 电力系统与智能电网协会</option>
+                  <option value="电力电子爱好者协会">💡 电力电子爱好者协会</option>
+                  <option value="物联网与虚拟仪器协会">🛰️ 物联网与虚拟仪器协会</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:0;">
+                <button class="btn btn-primary" id="btn-assign-association" style="white-space:nowrap;">🔷 分配管理员</button>
+              </div>
+            </div>
+            <div id="assign-result" style="margin-top:10px;font-size:0.9rem;"></div>
+          </div>
+
+          <!-- 已分配的协会管理员列表 -->
+          <div class="table-wrapper glass-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>所属协会</th>
+                  <th>姓名</th>
+                  <th>邮箱</th>
+                  <th>当前名额</th>
+                  <th>创建时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="assoc-admins-body">
+                <tr><td colspan="6" class="empty">加载中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="glass-card section-card" style="margin-top:20px;">
           <div class="section-card-header">
             <div>
               <div class="card-tag">USER · RBAC CONTROL</div>
@@ -221,16 +293,30 @@
             <div>
               <div class="card-tag">NOTICE · PUBLISH</div>
               <h2>📢 发布通知公告</h2>
-              <p class="section-desc-left">向全体已注册学生 / 指定审批状态学生推送站内通知（可搭配邮件）。</p>
+              <p class="section-desc-left">向全站用户推送通知（所有管理员均可发布，发布后全站可见）。</p>
             </div>
           </div>
-          <div id="notice-placeholder" class="notice-card">
-            <div style="font-size:2rem;margin-bottom:10px;">📣</div>
-            <div style="font-weight:700;margin-bottom:6px;">通知系统即将上线</div>
-            <div style="color:var(--text-muted);font-size:0.9rem;line-height:1.7;">
-              下一期版本将支持：按「全部学生 / 已通过 / 待审批」分组推送<br/>
-              同时触发邮件通知 · 支持富文本排版 · 已读回执统计
+          <div id="notice-alert"></div>
+          <div class="glass-card-inner" style="padding:18px 20px;margin-bottom:20px;">
+            <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:12px;">
+              <input id="notice-title" class="form-control" placeholder="公告标题（必填）" />
+              <input id="notice-content" class="form-control" placeholder="公告内容（必填）" />
             </div>
+            <button id="btn-publish-notice" class="btn btn-primary">📢 发布公告</button>
+          </div>
+          <div class="table-wrapper glass-table">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:22%;">标题</th>
+                  <th style="width:40%;">内容</th>
+                  <th style="width:15%;">发布者</th>
+                  <th style="width:13%;">发布时间</th>
+                  <th style="width:10%;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="notices-body"></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -282,7 +368,7 @@
   </div>
 
   <footer class="footer">
-    <p>© 2025 广西大学众创空间 · 电气工程学院 · 管理控制台</p>
+    <p>© 2026 广西大学众创空间 · 电气工程学院 · 管理控制台</p>
   </footer>
 
   <script type="module" src="js/supabase-init.js"></script>
