@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="广西大学电气工程学院众创空间 · 2025年度招新官网。三大中心（管理/创新创业/科普实践）+ 五大协会（人工智能与机器人/奇客电子/电力系统与智能电网/电力电子/物联网）。竞赛保研、综测加分、零基础友好。" />
-  <title>广西大学众创空间 · 三大中心 & 五大协会 | 2025招新</title>
+  <meta name="description" content="广西大学电气工程学院众创空间 · 2026年度招新官网。三大中心（管理/创新创业/科普实践）+ 五大协会（人工智能与机器人/奇客电子/电力系统与智能电网/电力电子/物联网）。竞赛保研、综测加分、零基础友好。" />
+  <title>广西大学众创空间 · 三大中心 & 五大协会 | 2026招新</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E⚡%3C/text%3E%3C/svg%3E" />
 </head>
@@ -41,6 +41,43 @@
     </div>
   </nav>
 
+  <!-- ================= 首次登录欢迎横幅（双 CTA：立即报名 / 设置密码） =================
+       默认隐藏；auth.js 中 applyUserBadgeState() 在登录时显示，未登录/退出 时隐藏 -->
+  <div id="welcome-banner" class="welcome-banner" style="display:none;">
+    <div class="welcome-banner-inner glass-panel">
+      <div class="welcome-main">
+        <div class="welcome-icon">👋</div>
+        <div class="welcome-text">
+          <div class="welcome-title">欢迎加入广西大学众创空间 · 2026 年度招新！</div>
+          <div class="welcome-sub">
+            首次登录：建议先<b>设置登录密码</b>（下次可直接邮箱+密码登录），再填写报名表。
+            也可以先自由浏览「三大中心 · 五大协会」介绍，随时从右上角或下方按钮进入报名。
+          </div>
+        </div>
+      </div>
+      <div class="welcome-actions">
+        <a href="change-password.html" class="btn btn-gold btn-block-sm">🔐 先设置登录密码</a>
+        <a href="register.html"        class="btn btn-primary btn-block-sm">📝 填写报名表 →</a>
+        <button type="button" class="btn-icon-close" id="welcome-close" aria-label="关闭欢迎提示">×</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 全站公告横幅 ================= -->
+  <div id="notice-banner-wrap" style="display:none;">
+    <div class="container">
+      <div id="notice-banner" class="notice-banner">
+        <button class="notice-banner-close" id="notice-banner-close" aria-label="关闭公告">×</button>
+        <div class="notice-banner-icon">📢</div>
+        <div class="notice-banner-body">
+          <div class="notice-banner-title" id="notice-banner-title"></div>
+          <div class="notice-banner-content" id="notice-banner-content"></div>
+        </div>
+        <div class="notice-banner-meta" id="notice-banner-meta"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ================= 面包屑（路径提示：首页 > 三大中心 > 管理中心） ================= -->
   <div class="container breadcrumb-wrapper">
     <nav class="breadcrumb" aria-label="breadcrumb">
@@ -64,7 +101,7 @@
         <div class="hero-inner glass-panel">
           <div class="hero-badge">
             <span class="hero-badge-dot"></span>
-            2025 年度招新 · 零基础友好 · 管理·孵化·科研·竞赛·宣传 一体化
+            2026 年度招新 · 零基础友好 · 管理·孵化·科研·竞赛·宣传 一体化
           </div>
           <h1 class="hero-title">
             广西大学<span class="hero-highlight">电气工程学院</span><br/>
@@ -689,8 +726,8 @@
       <div class="container signup-container">
         <div class="signup-glass glass-panel">
           <div class="section-title">
-            <div class="section-tag">2025 · RECRUITMENT</div>
-            <h2>2025 年度招新 · 正式开启</h2>
+            <div class="section-tag">2026 · RECRUITMENT</div>
+            <h2>2026 年度招新 · 正式开启</h2>
             <p class="section-desc">零基础不是门槛，敢想敢拼才是通行证。三步加入众创空间。</p>
           </div>
 
@@ -698,7 +735,7 @@
             <div class="step-card glass-card">
               <div class="step-num"><span>01</span></div>
               <h4>📮 邮箱验证登录</h4>
-              <p>使用真实校园 / QQ 邮箱接收 6 位验证码登录，确保邮箱真实有效。</p>
+              <p>使用真实校园 / QQ 邮箱接收 8 位验证码登录，确保邮箱真实有效。</p>
             </div>
             <div class="step-card glass-card">
               <div class="step-num"><span>02</span></div>
@@ -800,9 +837,9 @@
   <!-- 页脚 -->
   <footer class="footer">
     <div class="container footer-inner">
-      <div>© 2025 广西大学电气工程学院 · 众创空间 招新系统</div>
+      <div>© 2026 广西大学电气工程学院 · 众创空间 招新系统</div>
       <div style="color:var(--text-muted);font-size:0.85rem;">
-        技术支持：人工智能与机器人协会 · 物联网与虚拟仪器协会（科创媒体中心）
+        技术支持：众创空间
       </div>
     </div>
   </footer>
@@ -810,6 +847,7 @@
   <!-- ============ 脚本：必须按顺序加载！（全部为 ES Modules：使用 import/export） ============ -->
   <script type="module" src="js/supabase-init.js"></script>
   <script type="module" src="js/auth.js"></script>
+  <script type="module" src="js/notice.js"></script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
