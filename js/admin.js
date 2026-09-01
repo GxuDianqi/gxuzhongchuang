@@ -779,6 +779,159 @@ async function deleteNotice(id) {
   }
 }
 
+// ========================================================
+// 5.5 协会管理员分配模块【仅超管可用】
+// ========================================================
+function bindAssociationAdminEvents() {
+  $('btn-assign-association')?.addEventListener('click', assignAssociationAdmin);
+}
+
+/** 🔒 函数级硬拦截 4：加载协会名额统计 */
+async function loadAssociationQuota() {
+  if (!CURRENT_USER_IS_SUPER) return;
+  const el = $('assoc-quota-status');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">加载中...</div>';
+  try {
+    const { data, error } = await supabase.rpc('get_association_admin_stats');
+    if (error) throw error;
+    // 合并所有协会（含0人的）
+    const ALL_ASSOCS = [
+      '管理中心', '创新创业中心', '科普实践中心',
+      '人工智能与机器人协会', '奇客电子协会',
+      '电力系统与智能电网协会', '电力电子爱好者协会', '物联网与虚拟仪器协会'
+    ];
+    const statsMap = {};
+    (data || []).forEach(s => { statsMap[s.association] = s; });
+    const rows = ALL_ASSOCS.map(name => ({
+      association: name,
+      current_count: (statsMap[name]?.current_count ?? 0),
+      max_quota: 4,
+      remaining: (statsMap[name]?.remaining ?? 4),
+    }));
+    el.innerHTML = rows.map(r => {
+      const pct = Math.round((r.current_count / r.max_quota) * 100);
+      const color = r.remaining === 0 ? 'var(--danger)' : r.remaining <= 1 ? 'var(--accent-gold)' : 'var(--success)';
+      return `<div class="quota-card" style="padding:12px 14px;border-radius:10px;background:rgba(3,252,254,0.04);border:1px solid var(--border-light);">
+        <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;">${escapeHtml(r.association)}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:1.3rem;font-weight:800;color:${color};">${r.current_count}<span style="font-size:0.8rem;font-weight:400;color:var(--text-muted);"> / ${r.max_quota}</span></span>
+          <span style="font-size:0.75rem;color:var(--text-muted);">剩 ${r.remaining} 名</span>
+        </div>
+        <div style="margin-top:6px;height:4px;border-radius:999px;background:rgba(255,255,255,0.08);overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${color};border-radius:999px;transition:width 0.3s;"></div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    console.error('loadAssociationQuota err', err);
+    el.innerHTML = '<div class="empty" style="color:var(--danger);">加载失败：' + err.message + '</div>';
+  }
+}
+
+/** 🔒 函数级硬拦截 5：加载协会管理员列表 */
+async function loadAssociationAdmins() {
+  if (!CURRENT_USER_IS_SUPER) return;
+  const el = $('assoc-admins-body');
+  if (!el) return;
+  el.innerHTML = '<tr><td colspan="6" class="empty">加载中...</td></tr>';
+  try {
+    const { data, error } = await supabase.rpc('list_association_admins');
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      el.innerHTML = '<tr><td colspan="6" class="empty">暂无协会管理员，请在上方表单分配。</td></tr>';
+      return;
+    }
+    el.innerHTML = data.map(u => `
+      <tr>
+        <td><span style="color:var(--accent-cyan);font-weight:600;">${escapeHtml(u.association_admin)}</span></td>
+        <td><strong>${escapeHtml(u.name || u.email)}</strong></td>
+        <td style="font-size:0.82rem;color:var(--accent-cyan);">${escapeHtml(u.email)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="status-badge badge-admin">🛡 管理员</span>
+            ${u.is_super_admin ? '<span class="super-admin-badge">🔒 超管</span>' : ''}
+          </div>
+        </td>
+        <td style="font-size:0.8rem;color:var(--text-muted);">${fmt(u.created_at)}</td>
+        <td>
+          <button class="btn btn-danger" style="padding:3px 10px;font-size:0.8rem;"
+            onclick="window.__ADMIN__.removeAssociationAdmin('${u.user_id}')">
+            撤销
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.error('loadAssociationAdmins err', err);
+    el.innerHTML = '<tr><td colspan="6" class="empty" style="color:var(--danger);">加载失败：' + err.message + '</td></tr>';
+  }
+}
+
+/** 🔒 函数级硬拦截 6：分配协会管理员 */
+async function assignAssociationAdmin() {
+  if (!CURRENT_USER_IS_SUPER) { alert('🔒 仅超级管理员可分配协会管理员'); return; }
+  const emailInput = $('assign-user-email');
+  const assocSelect = $('assign-association');
+  const resultEl = $('assign-result');
+  const user_email = (emailInput?.value || '').trim().toLowerCase();
+  const association = assocSelect?.value || '';
+  if (!user_email || !association) {
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--accent-gold);">⚠️ 请填写用户邮箱并选择协会</span>';
+    return;
+  }
+  // 查用户 ID
+  try {
+    const { data: users, error: err1 } = await supabase
+      .from('profiles')
+      .select('id, email, name, is_admin')
+      .ilike('email', user_email)
+      .limit(5);
+    if (err1) throw err1;
+    if (!users || users.length === 0) {
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--danger);">❌ 未找到该邮箱用户，请先注册</span>';
+      return;
+    }
+    // 取第一个匹配
+    const target = users.find(u => u.is_admin === true) || users[0];
+    if (!target.is_admin) {
+      if (resultEl) resultEl.innerHTML = `<span style="color:var(--danger);">❌ 用户【${escapeHtml(target.email)}】还不是管理员，请先在「用户与权限」中提升权限。</span>`;
+      return;
+    }
+    if (!confirm(`确认将【${escapeHtml(target.name || target.email)}】(${escapeHtml(target.email)}) 设为「${association}」协会管理员？\n\n（每协会上限 4 名，超出将拒绝）`)) return;
+
+    const { data, error } = await supabase.rpc('set_association_admin', {
+      p_user_id: target.id,
+      p_association: association,
+      p_called_by: CURRENT_USER_EMAIL,
+    });
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || '分配失败');
+    if (resultEl) resultEl.innerHTML = `<span style="color:var(--success);">✅ ${data.name || target.email} 已分配为「${association}」协会管理员（当前 ${data.current_count}/${data.max_quota} 名）</span>`;
+    await loadAssociationQuota();
+    await loadAssociationAdmins();
+  } catch (err) {
+    console.error('assignAssociationAdmin err', err);
+    if (resultEl) resultEl.innerHTML = `<span style="color:var(--danger);">❌ ${err.message || '分配失败'}</span>`;
+  }
+}
+
+/** 🔒 函数级硬拦截 7：撤销协会管理员 */
+async function removeAssociationAdmin(userId) {
+  if (!CURRENT_USER_IS_SUPER) { alert('🔒 仅超级管理员可撤销协会管理员'); return; }
+  const u = allUsers.find(x => x.id === userId);
+  const email = u?.email || '';
+  if (!confirm(`确认撤销【${email}】的协会管理员身份？\n\n撤销后将变为普通总管理员，可见全部报名。`)) return;
+  try {
+    await supabase.from('profiles').update({ association_admin: null }).eq('id', userId);
+    if (u) u.association_admin = null;
+    await loadAssociationQuota();
+    await loadAssociationAdmins();
+    alert('✅ 已撤销协会管理员身份');
+  } catch (err) {
+    alert('❌ 撤销失败：' + (err.message || err));
+  }
+}
+
 // 全局暴露给 onclick 使用（🔒 toggleAdmin 内部自身会二次校验权限）
 window.__ADMIN__ = { showDetail, approve, reject, reset, toggleAdmin, userDetail, assignAssociationAdmin, removeAssociationAdmin, publishNotice, deleteNotice };
 
