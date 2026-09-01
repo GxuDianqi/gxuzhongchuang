@@ -1,2138 +1,968 @@
-/* ================================================================
-/*   广西大学众创空间 · 招新官网 2026 样式表
-   视觉基调：深色赛博科技（深蓝近黑）+ 青色电光（#03FCFE）+ 金色辅助
-   ================================================================ */
+/* ========================================================
+ * admin.js — 管理员审批后台（RBAC 三级分级版）
+ *
+ * 【角色权限】：
+ *   ┌───────────────────────┬──────────────┬──────────────┬──────────────┐
+ *   │ 功能模块               │ 访客          │ 总管理员      │ 协会管理员    │ 超级管理员   │
+ *   ├───────────────────────┼──────────────┼──────────────┼──────────────┼──────────────┤
+ *   │ 进入 admin.html        │ 跳登录页 ❌   │ ✅           │ ✅           │ ✅           │
+ *   │ 📋 报名审核            │ 不可见 ❌     │ ✅ 全部       │ ✅ 仅本协会   │ ✅ 全部       │
+ *   │ 📢 通知公告            │ 不可见 ❌     │ ✅ 可见       │ ✅ 可见       │ ✅ 可见       │
+ *   │ 📥 报名表导出          │ 不可见 ❌     │ ✅            │ ✅            │ ✅            │
+ *   │ 👥 用户与权限管理      │ 不可见 ❌     │ ❌ DOM 删除   │ ❌ DOM 删除   │ ✅            │
+ *   │ 📥 用户清单导出        │ 不可见 ❌     │ ❌ DOM 删除   │ ❌ DOM 删除   │ ✅            │
+ *   │ 切换 is_admin          │ 不可用 ❌     │ ❌ 二次拦截   │ ❌ 二次拦截   │ ✅            │
+ *   │ 分配协会管理员         │ 不可见 ❌     │ ❌ DOM 删除   │ ❌ DOM 删除   │ ✅            │
+ *   └───────────────────────┴──────────────┴──────────────┴──────────────┴──────────────┘
+ *
+ *  协会管理员数据隔离：
+ *    · 超级管理员可设置每个协会最多 4 名协会管理员
+ *    · 协会管理员登录后只能看到自己协会的申请记录
+ *    · 总管理员（无 association_admin）可看到全部申请记录
+ * ======================================================== */
+import {
+  supabase, STATUS_LABEL, showAlert, hideAlert, setLoading, isCurrentUserAdmin,
+  getCurrentAdminType,
+} from './supabase-init.js';
 
-/* ---------- 0. 全局变量 ---------- */
-:root {
-  --bg-deep:      #090c14;   /* 最深背景（body）*/
-  --bg-page:      #0d1117;   /* 页面标准背景 */
-  --bg-card:      #141b2b;   /* 卡片内部背景 */
-  --bg-elevated:  #1a2238;   /* 抬升的面板背景 */
-  --border-light: rgba(255,255,255,0.08);  /* 浅色描边 */
-  --border-glass: rgba(255,255,255,0.14);  /* 毛玻璃描边 */
-  --text-primary: #f1f5f9;   /* 主文字 */
-  --text-secondary:#cbd5e1;  /* 次级文字 */
-  --text-muted:   #94a3b8;   /* 弱化文字 */
-  --accent-cyan:  #03FCFE;   /* 主色：电光青 */
-  --accent-cyan-dim: rgba(3,252,254,0.35);
-  --accent-blue:  #3b82f6;
-  --accent-gold:  #facc15;   /* 辅助色：金色 */
-  --accent-gold-dim: rgba(250,204,21,0.3);
-  --accent-red:   #ef4444;
-  --accent-purple:#a855f7;
-  --accent-green: #22c55e;
-  --gradient-cyan-blue: linear-gradient(135deg,#03FCFE 0%,#3b82f6 100%);
-  --gradient-cyan-gold: linear-gradient(135deg,#03FCFE 0%,#facc15 100%);
-  --shadow-glow-cyan: 0 0 30px rgba(3,252,254,0.25);
-  --shadow-card-hover: 0 25px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(3,252,254,0.2);
-  --radius-lg: 10px;
-  --radius-md: 8px;
-  --radius-sm: 6px;
-  --nav-height: 64px;
-  --glow-cyan: drop-shadow(0 0 6px rgba(3,252,254,0.55)) drop-shadow(0 0 14px rgba(3,252,254,0.25));
-  --glow-gold: drop-shadow(0 0 6px rgba(250,204,21,0.55)) drop-shadow(0 0 14px rgba(250,204,21,0.2));
-}
+// ---------- 工具 ----------
+const $ = (id) => document.getElementById(id);
+const SUPER_ADMIN_EMAIL = 'admin@gxu-ai.club'; // 🔒 最高管理员邮箱
+let CURRENT_USER_IS_SUPER = false;             // 运行时缓存
+let CURRENT_USER_ASSOCIATION = null;           // 协会管理员所属协会名（null = 总管理员）
 
-/* ---------- 1. Reset ---------- */
-*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
-html { scroll-behavior:smooth; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
-               "Helvetica Neue", Arial, sans-serif;
-  /* 最底层：AI 智能设备实验室真实场景背景（fixed 不随滚动移动 → 视差感） */
-  background-color: var(--bg-deep);
-  background-image: url('../images/ai-lab-bg.jpg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-  color: var(--text-primary);
-  line-height: 1.7;
-  min-height: 100vh;
-  overflow-x: hidden;
-  position: relative;
-}
-body::before {
-  /* 层1：黑色渐变遮罩（暗化真实背景图，保证文字可读）
-     层2：SVG 电路纹理叠加在遮罩上（保持原来的科技感）
-     叠放顺序：前面的 background-image 在上面 → 先 SVG 再 遮罩渐变
-  */
-  content:'';
-  position: fixed;
-  inset: 0;
-  background-image:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300' viewBox='0 0 300 300'><path d='M0 150 L 150 150 L 150 300' stroke='%2303FCFE' stroke-opacity='0.035' stroke-width='1' fill='none'/><path d='M300 0 L 300 150 L 150 150 L 150 0' stroke='%2303FCFE' stroke-opacity='0.025' stroke-width='1' fill='none'/><circle cx='150' cy='150' r='3' fill='%2303FCFE' fill-opacity='0.06'/><circle cx='0' cy='150' r='2' fill='%2303FCFE' fill-opacity='0.05'/><circle cx='300' cy='150' r='2' fill='%2303FCFE' fill-opacity='0.05'/><circle cx='150' cy='0' r='2' fill='%2303FCFE' fill-opacity='0.05'/><circle cx='150' cy='300' r='2' fill='%2303FCFE' fill-opacity='0.05'/></svg>"),
-    /* 遮罩：顶部+四周更暗（避免亮部抢字），中部轻微透亮一点，让设备轮廓微微透出来 */
-    linear-gradient(180deg, rgba(13,17,23,0.72) 0%, rgba(13,17,23,0.48) 12%, rgba(13,17,23,0.52) 55%, rgba(13,17,23,0.72) 100%),
-    radial-gradient(ellipse at center, rgba(13,17,23,0.30) 0%, rgba(13,17,23,0.68) 85%);
-  background-repeat: repeat, no-repeat, no-repeat;
-  background-size: 300px 300px, 100% 100%, 100% 100%;
-  pointer-events: none;
-  z-index: -1;
-}
-body::after {
-  /* 底部呼吸灯式光晕（保留，压在设备背景上更有一体感） */
-  content:'';
-  position: fixed;
-  left:50%; bottom:-25vh;
-  width:1400px; height:500px;
-  transform:translateX(-50%);
-  background: radial-gradient(circle, rgba(3,252,254,0.18) 0%, rgba(59,130,246,0.08) 40%, transparent 70%);
-  filter: blur(30px);
-  pointer-events: none;
-  z-index: -1;
-  animation: breathe 6s ease-in-out infinite;
-}
-a { color: inherit; text-decoration: none; }
-button { cursor: pointer; font-family: inherit; border: none; background: none; color: inherit; }
-ul, ol { list-style: none; }
-img { max-width: 100%; display: block; }
-.container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
-.text-cyan { color: var(--accent-cyan); }
-.text-gold { color: var(--accent-gold); }
-.cyan { color: var(--accent-cyan); font-weight:700; }
-.gold { color: var(--accent-gold); font-weight:700; }
+// ---------- 通用 DOM ----------
+const loginRequired = $('login-required');
+const permDenied   = $('permission-denied');
+const adminPanel   = $('admin-panel');
+const userEmailEl  = $('user-email');
+const navUser      = $('nav-user');
+let CURRENT_USER_ID = null;
+let CURRENT_USER_EMAIL = null;
 
-/* ---------- 2. 画布 & 扫描线 ---------- */
-#particle-canvas {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.scanline {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  pointer-events: none;
-  background: linear-gradient(180deg, transparent 0%, rgba(3,252,254,0.6) 48%, rgba(3,252,254,0.95) 50%, rgba(3,252,254,0.6) 52%, transparent 100%);
-  background-size: 100% 4px;
-  transform: translateY(-100vh);
-  opacity: 0;
-}
-.scanline.animate {
-  animation: scanSweep 0.9s cubic-bezier(.2,.7,.3,1) forwards;
-}
-@keyframes scanSweep {
-  0%   { transform: translateY(-100vh); opacity: 0; }
-  10%  { opacity: 1; }
-  90%  { opacity: 1; }
-  100% { transform: translateY(100vh); opacity: 0; }
-}
-@keyframes breathe {
-  0%,100% { transform: translateX(-50%) scale(1); opacity: 0.75; }
-  50%     { transform: translateX(-50%) scale(1.15); opacity: 1; }
-}
-@keyframes flash {
-  0%,100% { opacity: 1; box-shadow: 0 0 10px currentColor; }
-  50%     { opacity: 0.4; box-shadow: 0 0 4px currentColor; }
-}
-@keyframes floatSoft {
-  0%,100% { transform: translateY(0); }
-  50%     { transform: translateY(-6px); }
-}
+// ---------- Tab ----------
+const tabButtons  = document.querySelectorAll('.admin-tab');
+const tabPanels   = document.querySelectorAll('.admin-tab-panel');
 
-/* ---------- 3. 毛玻璃 & 卡片公共（光影思维：透光 + 细边 + 受光高光 + 微弱环境光）---------- */
-.glass-panel {
-  /* 极光玻璃：极深色超低 alpha 让粒子背景透进来 */
-  background: linear-gradient(180deg, rgba(15,22,40,0.14) 0%, rgba(11,16,28,0.10) 100%);
-  backdrop-filter: blur(10px) saturate(120%);
-  -webkit-backdrop-filter: blur(10px) saturate(120%);
-  border: 0.5px solid transparent;
-  border-radius: var(--radius-lg);
-  /* 渐变细线边框（青→银灰）：用 background-clip trick 实现 */
-  position: relative;
-  background-clip: padding-box;
-  box-shadow:
-    0 1px 2px rgba(0,0,0,0.35),                 /* 极轻投影（不是黑色厚块） */
-    0 8px 24px rgba(0,0,0,0.18),
-    0 0 18px rgba(3,252,254,0.07);                /* 青色环境光：让它像被周围光点亮 */
-}
-.glass-panel::before {
-  /* 顶部 0.5px 渐变细线描边（包在 padding-box 外的 border 区）*/
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 0.5px;
-  background: linear-gradient(135deg, rgba(3,252,254,0.55) 0%, rgba(148,163,184,0.28) 40%, rgba(255,255,255,0.08) 100%);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-          mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  pointer-events: none;
-}
-.glass-panel::after {
-  /* 顶部受光面高光线：模拟光线打在玻璃顶部的一条亮白/青色带 */
-  content: '';
-  position: absolute;
-  left: 8%; right: 8%; top: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(3,252,254,0.9) 20%, rgba(255,255,255,0.95) 50%, rgba(3,252,254,0.9) 80%, transparent 100%);
-  border-radius: 999px;
-  box-shadow: 0 0 10px rgba(3,252,254,0.6), 0 0 22px rgba(3,252,254,0.25);
-  pointer-events: none;
-}
+// ---------- 报名审核 ----------
+const tbody        = $('registrations-body');
+const filterStatus = $('filter-status');
+const filterDept   = $('filter-dept');
+const filterSearch = $('filter-search');
+const statTotal    = $('stat-total');
+const statPending  = $('stat-pending');
+const statApproved = $('stat-approved');
+const statRejected = $('stat-rejected');
+const tabCountAudit = $('tab-count-audit');
+const modalMask  = $('detail-modal');
+const modalBody  = $('detail-body');
+const modalClose = $('modal-close');
+let allRows = [];
 
-.glass-card {
-  background: linear-gradient(180deg, rgba(16,23,40,0.10) 0%, rgba(12,17,29,0.08) 100%);
-  backdrop-filter: blur(9px) saturate(115%);
-  -webkit-backdrop-filter: blur(9px) saturate(115%);
-  border: 0.5px solid transparent;
-  border-radius: var(--radius-md);
-  padding: 22px 20px;
-  position: relative;
-  background-clip: padding-box;
-  overflow: hidden;
-  transition: transform 0.35s cubic-bezier(.2,.7,.3,1), box-shadow 0.35s;
-  box-shadow:
-    0 1px 2px rgba(0,0,0,0.3),
-    0 8px 20px rgba(0,0,0,0.14),
-    0 0 12px rgba(3,252,254,0.05);
-}
-.glass-card::before {
-  /* 0.5px 渐变细线描边：青→灰（比 panel 更细更淡）*/
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 0.5px;
-  background: linear-gradient(135deg, rgba(3,252,254,0.45) 0%, rgba(148,163,184,0.22) 50%, rgba(255,255,255,0.06) 100%);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-          mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  pointer-events: none;
-}
-.glass-card::after {
-  /* 顶部受光高光线 */
-  content: '';
-  position: absolute;
-  left: 10%; right: 10%; top: 0;
-  height: 0.5px;
-  background: linear-gradient(90deg, transparent 0%, rgba(3,252,254,0.8) 25%, rgba(255,255,255,0.95) 50%, rgba(3,252,254,0.8) 75%, transparent 100%);
-  box-shadow: 0 0 8px rgba(3,252,254,0.5);
-  pointer-events: none;
-}
-.glass-card:hover {
-  transform: translateY(-3px);
-  /* hover 时增强青色环境光，像被点亮：不再加边框颜色，只发光 */
-  box-shadow:
-    0 4px 8px rgba(0,0,0,0.32),
-    0 18px 40px rgba(0,0,0,0.22),
-    0 0 28px rgba(3,252,254,0.18);
-}
-
-/* 高亮卡片（荣誉/硬核成果）：金色环境光 + 细金线 */
-.highlight-card {
-  position: relative;
-}
-.highlight-card::before {
-  background: linear-gradient(135deg, rgba(250,204,21,0.55) 0%, rgba(3,252,254,0.3) 50%, rgba(255,255,255,0.08) 100%);
-}
-.highlight-card::after {
-  background: linear-gradient(90deg, transparent 0%, rgba(250,204,21,0.9) 20%, rgba(255,255,255,0.95) 50%, rgba(250,204,21,0.9) 80%, transparent 100%);
-  box-shadow: 0 0 10px rgba(250,204,21,0.55), 0 0 24px rgba(250,204,21,0.25);
-}
-.highlight-card:hover {
-  box-shadow:
-    0 4px 8px rgba(0,0,0,0.32),
-    0 18px 40px rgba(0,0,0,0.22),
-    0 0 34px rgba(250,204,21,0.22),
-    0 0 20px rgba(3,252,254,0.12);
-}
-
-/* ---------- 4. 顶部导航栏 ---------- */
-.navbar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: rgba(9,12,20,0.72);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border-light);
-}
-.nav-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 32px;
-  height: var(--nav-height);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-}
-.nav-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 800;
-  font-size: 0.98rem;
-  white-space: nowrap;
-  color: var(--text-primary);
-}
-.nav-logo-dot {
-  width: 10px; height: 10px;
-  background: var(--gradient-cyan-blue);
-  border-radius: 50%;
-  box-shadow: 0 0 12px var(--accent-cyan);
-  animation: flash 1.8s infinite;
-}
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.nav-links li { display: inline-flex; align-items: center; }
-.level1-link {
-  position: relative;
-  padding: 10px 18px;
-  border-radius: var(--radius-sm);
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  transition: all 0.25s ease;
-}
-.level1-link:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
-.level1-link.active { color: var(--text-primary); }
-.level1-link.active::after {
-  content:'';
-  position: absolute;
-  left: 18px; right: 18px; bottom: 2px;
-  height: 3px;
-  border-radius: 3px;
-  background: var(--gradient-cyan-blue);
-  box-shadow: var(--shadow-glow-cyan);
-}
-#nav-right-links { margin-left: 10px; display: inline-flex; gap: 10px; align-items: center; }
-#nav-right-links a:first-of-type { font-weight:500; color: var(--text-secondary); padding: 8px 12px; border-radius: var(--radius-sm); transition: .2s; }
-#nav-right-links a:first-of-type:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
-.nav-cta {
-  display: inline-block;
-  padding: 9px 20px;
-  border-radius: var(--radius-sm);
-  font-weight: 700;
-  background: var(--gradient-cyan-blue);
-  color: #001018 !important;
-  box-shadow: 0 8px 20px rgba(3,252,254,0.18);
-  transition: all 0.25s ease;
-}
-.nav-cta:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(3,252,254,0.28); }
-.nav-user {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px 6px 14px;
-  background: rgba(3,252,254,0.06);
-  border: 1px solid rgba(3,252,254,0.2);
-  border-radius: 999px;
-  max-width: 100%;
-}
-.user-email {
-  font-size: 0.88rem;
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
-  color: var(--accent-cyan);
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.btn-user-action {
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: rgba(3,252,254,0.12);
-  color: #92f6ff;
-  font-size: 0.78rem;
-  font-weight: 600;
-  transition: all .2s;
-  white-space: nowrap;
-  border: 1px solid rgba(3,252,254,0.28);
-  cursor: pointer;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.btn-user-action.btn-pwd {
-  background: rgba(250,204,21,0.15);
-  color: #fde68a;
-  border-color: rgba(250,204,21,0.35);
-}
-.btn-user-action.btn-pwd:hover {
-  background: rgba(250,204,21,0.28);
-  color: #fef3c7;
-  box-shadow: 0 0 10px rgba(250,204,21,0.35);
-}
-.btn-logout {
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.06);
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  font-weight: 600;
-  transition: .2s;
-}
-.btn-logout:hover { background: rgba(239,68,68,0.15); color: #fecaca; }
-
-/* ---------- 5. 面包屑 ---------- */
-.breadcrumb-wrapper { padding-top: 18px; padding-bottom: 4px; }
-.breadcrumb {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 8px 16px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border-light);
-  border-radius: 999px;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-.crumb { padding: 0 4px; }
-.crumb.crumb-level1 { color: var(--text-secondary); font-weight:600; }
-.crumb.crumb-level2 { color: var(--accent-cyan); font-weight:700; }
-.crumb-sep { padding: 0 6px; color: rgba(255,255,255,0.2); }
-
-/* ---------- 6. 公共区块/标题 ---------- */
-.page-section {
-  display: none;
-  padding: 16px 0 80px;
-  animation: fadeInUp 0.5s ease both;
-}
-.page-section.active { display: block; }
-.section {
-  padding: 80px 0;
-  width: 100%;
-}
-.section-title { margin-bottom: 48px; text-align: left; }
-.section-tag {
-  display: inline-block;
-  padding: 4px 14px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 2.5px;
-  color: var(--accent-cyan);
-  background: rgba(3,252,254,0.05);
-  border: 0.5px solid rgba(3,252,254,0.45);
-  border-radius: 999px;
-  margin-bottom: 14px;
-}
-.section-title h2 {
-  font-size: 2.25rem;
-  font-weight: 800;
-  line-height: 1.2;
-  background: linear-gradient(120deg, var(--text-primary) 0%, #cbd5e1 55%, var(--accent-cyan) 100%);
-  -webkit-background-clip: text;
-          background-clip: text;
-  -webkit-text-fill-color: transparent;
-  letter-spacing: 0.2px;
-}
-.section-desc {
-  color: var(--text-secondary);
-  margin-top: 12px;
-  font-size: 1rem;
-  max-width: 760px;
-  line-height: 1.75;
-}
-.section-title[style*="text-align:center"] .section-desc { margin-left:auto; margin-right:auto; }
-
-@keyframes fadeInUp {
-  0%   { opacity: 0; transform: translateY(20px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-/* ---------- 7. Hero ---------- */
-.hero {
-  padding: 56px 24px 40px;
-  max-width: 1300px;
-  margin: 0 auto;
-}
-.hero-inner {
-  padding: 56px 56px;
-  text-align: center;
-  position: relative;
-  overflow: hidden;
-}
-.hero-inner::before {
-  /* Hero 顶部边缘发光 */
-  content:'';
-  position: absolute;
-  left: 10%; right: 10%; top: 0;
-  height: 2px;
-  background: var(--gradient-cyan-blue);
-  box-shadow: 0 0 20px var(--accent-cyan);
-  opacity: 0.7;
-}
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 18px;
-  border-radius: 999px;
-  background: rgba(250,204,21,0.08);
-  border: 1px solid var(--accent-gold-dim);
-  color: var(--accent-gold);
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin-bottom: 28px;
-}
-.hero-badge-dot {
-  display: inline-block;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--accent-gold);
-  animation: flash 1.4s infinite;
-}
-.hero-title {
-  font-size: 2.9rem;
-  font-weight: 900;
-  line-height: 1.25;
-  margin-bottom: 22px;
-  letter-spacing: 0.5px;
-}
-.hero-highlight { color: var(--accent-gold); font-weight: 900; }
-.hero-gradient-text {
-  background: linear-gradient(135deg, #03FCFE 0%, #3b82f6 50%, #facc15 100%);
-  -webkit-background-clip: text;
-          background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-.hero-subtitle {
-  max-width: 820px;
-  margin: 0 auto 36px;
-  color: var(--text-secondary);
-  font-size: 1.05rem;
-  line-height: 1.9;
-}
-.hero-stats {
-  display: grid;
-  grid-template-columns: repeat(4,1fr);
-  gap: 16px;
-  max-width: 900px;
-  margin: 0 auto 36px;
-}
-.stat-card {
-  padding: 20px 14px;
-  text-align: center;
-}
-.stat-num {
-  font-size: 2rem;
-  font-weight: 900;
-  line-height: 1;
-  margin-bottom: 8px;
-  font-family: 'JetBrains Mono','Courier New', monospace;
-}
-.stat-label { color: var(--text-muted); font-size: 0.9rem; }
-.hero-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-/* 按钮公共 */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px 28px;
-  border-radius: var(--radius-sm);
-  font-weight: 700;
-  font-size: 0.96rem;
-  transition: all 0.28s cubic-bezier(.2,.7,.3,1);
-  cursor: pointer;
-  text-align: center;
-  white-space: nowrap;
-}
-.btn-primary {
-  background: var(--gradient-cyan-blue);
-  color: #001822;
-  box-shadow: 0 10px 25px rgba(3,252,254,0.25);
-}
-.btn-primary:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 16px 36px rgba(3,252,254,0.38);
-}
-.btn-gold {
-  background: linear-gradient(135deg, #facc15 0%, #f59e0b 100%);
-  color: #1f1200;
-  font-weight: 700;
-  border: 1px solid rgba(250, 204, 21, 0.55);
-  box-shadow: 0 10px 25px rgba(250,204,21,0.22);
-}
-.btn-gold:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 15px 32px rgba(250,204,21,0.36);
-}
-.btn-block-sm { padding: 9px 16px; font-size: 0.9rem; border-radius: 8px; display: inline-flex; align-items: center; text-decoration: none; }
-.btn-icon-close {
-  background: transparent; border: none; color: var(--text-muted);
-  font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 2px 8px; border-radius: 6px;
-  transition: all 0.2s;
-}
-.btn-icon-close:hover { color: #f87171; background: rgba(248,113,113,0.08); }
-.btn-outline {
-  background: transparent;
-  border: 1.5px solid var(--border-glass);
-  color: var(--text-primary);
-  backdrop-filter: blur(8px);
-}
-.btn-outline:hover {
-  border-color: var(--accent-cyan);
-  color: var(--accent-cyan);
-  background: rgba(3,252,254,0.05);
-  transform: translateY(-2px);
-}
-.btn-success {
-  background: rgba(34,197,94,0.15);
-  border: 1px solid rgba(34,197,94,0.45);
-  color: #4ade80;
-  backdrop-filter: blur(8px);
-}
-.btn-success:hover {
-  background: rgba(34,197,94,0.28);
-  border-color: #4ade80;
-  color: #86efac;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(34,197,94,0.25);
-}
-.btn-danger {
-  background: rgba(239,68,68,0.12);
-  border: 1px solid rgba(239,68,68,0.4);
-  color: #f87171;
-  backdrop-filter: blur(8px);
-}
-.btn-danger:hover {
-  background: rgba(239,68,68,0.25);
-  border-color: #f87171;
-  color: #fecaca;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(239,68,68,0.22);
-}
-.btn-large { padding: 16px 38px; font-size: 1.05rem; border-radius: 12px; }
-
-/* ---------- 8. 全息组织架构图（悬浮式全息发光面板 + 神经网络光带连接）---------- */
-.hologram-section {
-  padding: 30px 16px 80px;
-  max-width: 1300px;
-  margin: 0 auto;
-}
-.holo-grid {
-  padding: 0;
-  position: relative;
-  min-height: 580px;
-}
-/* 移除大框背景：卡片直接悬浮在深蓝背景上 */
-.holo-grid.glass-panel,
-.holo-grid::before,
-.holo-grid::after {
-  background: transparent !important;
-  backdrop-filter: none !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-.holo-grid::before, .holo-grid::after { display: none !important; }
-
-.holo-row {
-  display: grid;
-  gap: 22px;
-  margin: 0 auto;
-  position: relative;
-  z-index: 2;
-}
-.holo-row-top    { grid-template-columns: repeat(3,1fr); max-width: 1000px; padding: 0 12px; }
-.holo-row-bottom { grid-template-columns: repeat(5,1fr); max-width: 1220px; margin-top: 160px; padding: 0 10px; gap: 16px; }
-
-/* 神经网络主光带 + 分叉连接线（SVG 容器）*/
-.holo-connector {
-  display: block;
-  width: 100%;
-  height: 220px;
-  position: absolute;
-  left: 0; right: 0;
-  top: 260px;
-  z-index: 1;
-  pointer-events: none;
-  overflow: visible;
-}
-.holo-connector .holo-beam-glow {
-  /* 主光束流动动画：stroke-dashoffset 移动 */
-  stroke-dasharray: 220 80;
-  animation: beamFlow 3s linear infinite;
-  filter: drop-shadow(0 0 10px rgba(3,252,254,0.55)) drop-shadow(0 0 22px rgba(3,252,254,0.28));
-}
-.holo-connector .holo-beam-core {
-  stroke-dasharray: 220 80;
-  animation: beamFlow 3s linear infinite;
-}
-.holo-connector .holo-branch {
-  stroke-dasharray: 120 60;
-  animation: beamFlow 2.4s linear infinite;
-  animation-delay: -0.8s;
-  filter: drop-shadow(0 0 8px rgba(3,252,254,0.4)) drop-shadow(0 0 18px rgba(3,252,254,0.22));
-}
-.holo-connector .holo-node-dot {
-  /* 光带上的节点发光圆点 */
-  animation: pulseDot 2s ease-in-out infinite;
-  filter: drop-shadow(0 0 6px rgba(3,252,254,0.8)) drop-shadow(0 0 16px rgba(3,252,254,0.5));
-}
-@keyframes beamFlow {
-  to { stroke-dashoffset: -600; }
-}
-@keyframes pulseDot {
-  0%,100% { opacity: 1; r: 4; }
-  50%     { opacity: 0.7; r: 5.5; }
-}
-
-/* 节点卡片：极光玻璃（光影版，无底色厚块）*/
-.holo-node {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
-  padding: 22px 22px;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(180deg, rgba(16,23,40,0.13) 0%, rgba(12,17,29,0.10) 100%);
-  backdrop-filter: blur(9px) saturate(115%);
-  -webkit-backdrop-filter: blur(9px) saturate(115%);
-  border: 0.5px solid transparent;
-  border-radius: var(--radius-md);
-  background-clip: padding-box;
-  transition: transform 0.4s cubic-bezier(.2,.7,.3,1), box-shadow 0.4s;
-  box-shadow:
-    0 1px 2px rgba(0,0,0,0.3),
-    0 8px 20px rgba(0,0,0,0.15),
-    0 0 14px rgba(3,252,254,0.06);
-}
-/* 细渐变描边 */
-.holo-node::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 0.5px;
-  background: linear-gradient(135deg, rgba(3,252,254,0.52) 0%, rgba(148,163,184,0.22) 50%, rgba(255,255,255,0.06) 100%);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-          mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  pointer-events: none;
-}
-/* 顶部受光条 */
-.holo-node::after {
-  content: '';
-  position: absolute;
-  left: 10%; right: 10%; top: 0;
-  height: 0.5px;
-  background: linear-gradient(90deg, transparent 0%, rgba(3,252,254,0.85) 25%, rgba(255,255,255,0.95) 50%, rgba(3,252,254,0.85) 75%, transparent 100%);
-  box-shadow: 0 0 8px rgba(3,252,254,0.55);
-  pointer-events: none;
-}
-/* 中心节点：金色点缀 */
-.holo-node.center-node::before {
-  background: linear-gradient(135deg, rgba(250,204,21,0.55) 0%, rgba(3,252,254,0.3) 50%, rgba(255,255,255,0.08) 100%);
-}
-.holo-node.center-node::after {
-  background: linear-gradient(90deg, transparent 0%, rgba(250,204,21,0.9) 20%, rgba(255,255,255,0.95) 50%, rgba(250,204,21,0.9) 80%, transparent 100%);
-  box-shadow: 0 0 10px rgba(250,204,21,0.55), 0 0 22px rgba(250,204,21,0.25);
-}
-.holo-node.center-node:hover {
-  box-shadow:
-    0 4px 8px rgba(0,0,0,0.32),
-    0 18px 40px rgba(0,0,0,0.22),
-    0 0 36px rgba(250,204,21,0.22),
-    0 0 18px rgba(3,252,254,0.14);
-}
-.holo-node.ass-node { animation: floatSoft 6s ease-in-out infinite; }
-.holo-node.ass-node:nth-child(even) { animation-delay: -1.5s; }
-.holo-node.ass-node:nth-child(3)    { animation-delay: -3s; }
-.holo-node:hover {
-  transform: translateY(-4px) scale(1.02);
-  box-shadow:
-    0 4px 8px rgba(0,0,0,0.32),
-    0 18px 40px rgba(0,0,0,0.22),
-    0 0 34px rgba(3,252,254,0.22);
-}
-
-/* 图标：无底色，极简线性发光 SVG（filter 做发光）*/
-.holo-icon {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 14px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  font-size: 0;
-  filter: var(--glow-cyan);
-}
-.holo-icon svg {
-  width: 32px; height: 32px;
-  stroke: var(--accent-cyan);
-  stroke-width: 1.6;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-/* 中心节点图标：金色发光 */
-.holo-node.center-node .holo-icon { filter: var(--glow-gold); }
-.holo-node.center-node .holo-icon svg { stroke: var(--accent-gold); }
-/* 协会节点图标：保持青色发光（不再用橙黄渐变方块底）*/
-.holo-node.ass-node .holo-icon { background: none; box-shadow: none; }
-
-.holo-title {
-  font-size: 1.1rem;
-  font-weight: 800;
-  margin-bottom: 4px;
-  color: var(--text-primary);
-  letter-spacing: 0.2px;
-}
-.holo-sub {
-  font-size: 0.82rem;
-  color: var(--accent-cyan);
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  margin-bottom: 12px;
-  opacity: 0.95;
-}
-/* 透明胶囊标签：极弱同色系底（10% 透明度）+ 细青描边 + 浅青字 */
-.holo-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.holo-tags span {
-  display: inline-block;
-  padding: 4px 10px;
-  background: rgba(3,252,254,0.04);
-  border: 0.5px solid rgba(3,252,254,0.4);
-  border-radius: 999px;
-  color: rgba(3,252,254,0.9);
-  font-size: 0.76rem;
-  font-weight: 500;
-  letter-spacing: 0.2px;
-}
-.holo-hint {
-  margin-top: 32px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  opacity: 0.8;
-}
-
-/* ---------- 9. 二级胶囊 Tab ---------- */
-.capsule-tabs {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 10px;
-  margin: 0 auto 32px;
-  background: rgba(255,255,255,0.025);
-  border: 1px solid var(--border-light);
-  border-radius: 999px;
-  max-width: fit-content;
-  backdrop-filter: blur(10px);
-}
-.center-tabs  { max-width: 700px; }
-.ass-tabs    { max-width: 1100px; }
-.capsule-tab {
-  padding: 9px 20px;
-  border-radius: 999px;
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border-light);
-  transition: all 0.3s cubic-bezier(.2,.7,.3,1);
-  white-space: nowrap;
-}
-.capsule-tab:hover {
-  color: var(--text-primary);
-  border-color: rgba(3,252,254,0.35);
-  background: rgba(3,252,254,0.05);
-}
-.capsule-tab.active {
-  background: var(--gradient-cyan-blue);
-  color: #001018;
-  font-weight: 800;
-  border-color: transparent;
-  box-shadow: 0 6px 18px rgba(3,252,254,0.35);
-}
-
-/* ---------- 10. Tab 面板 & 内容网格 ---------- */
-.tab-panels { position: relative; }
-.tab-panel {
-  display: none;
-  padding: 40px 44px;
-  animation: slideInRight 0.5s cubic-bezier(.2,.7,.3,1) both;
-}
-.tab-panel.active { display: block; }
-@keyframes slideInRight {
-  0%   { opacity: 0; transform: translateX(30px); }
-  100% { opacity: 1; transform: translateX(0); }
-}
-.panel-header { margin-bottom: 28px; }
-.panel-title {
-  font-size: 1.7rem;
-  font-weight: 800;
-  margin-bottom: 6px;
-  line-height: 1.35;
-}
-.panel-sub {
-  color: var(--text-muted);
-  font-size: 0.98rem;
-}
-.panel-role-tag {
-  display: inline-block;
-  padding: 5px 12px;
-  margin-bottom: 12px;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-}
-/* 全都是透明底 + 细描边 + 浅彩色字（不再有深色厚底）*/
-.role-tech        { background: rgba(3,252,254,0.05);  color: rgba(3,252,254,0.92);  border: 0.5px solid rgba(3,252,254,0.42); }
-.role-training    { background: rgba(168,85,247,0.05); color: rgba(192,132,252,0.92); border: 0.5px solid rgba(168,85,247,0.4); }
-.role-competition { background: rgba(250,204,21,0.05); color: rgba(250,204,21,0.94);  border: 0.5px solid rgba(250,204,21,0.42); }
-.role-achieve     { background: rgba(249,115,22,0.05); color: rgba(253,186,116,0.92); border: 0.5px solid rgba(249,115,22,0.4); }
-.role-media       { background: rgba(34,197,94,0.05);  color: rgba(74,222,128,0.92);   border: 0.5px solid rgba(34,197,94,0.4); }
-.panel-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-}
-.feature-card h4 {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 10px 0 8px;
-}
-.feature-card p {
-  color: var(--text-secondary);
-  font-size: 0.94rem;
-  line-height: 1.8;
-}
-/* feature-ic：去掉渐变方块底 → 透明 + 发光线性 SVG */
-.feature-ic {
-  width: 44px; height: 44px;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  display: grid; place-items: center;
-  font-size: 0;
-  filter: var(--glow-cyan);
-  margin: 0;
-}
-.feature-ic svg {
-  width: 30px; height: 30px;
-  stroke: var(--accent-cyan);
-  stroke-width: 1.6;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.highlight-card .feature-ic {
-  filter: var(--glow-gold);
-  background: none;
-  border: none;
-}
-.highlight-card .feature-ic svg { stroke: var(--accent-gold); }
-.result-list {
-  list-style: none;
-  margin-top: 8px;
-}
-.result-list li {
-  padding: 7px 0;
-  color: var(--text-secondary);
-  font-size: 0.96rem;
-  line-height: 1.65;
-  border-bottom: 1px dashed rgba(255,255,255,0.06);
-}
-.result-list li:last-child { border-bottom: none; }
-
-/* ---------- 11. 招新报名 CTA ---------- */
-.signup-container { padding: 40px 24px 20px; }
-.signup-glass {
-  padding: 56px 48px;
-  text-align: center;
-}
-.steps-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-  margin: 10px 0 36px;
-}
-.step-card {
-  position: relative;
-  padding: 50px 24px 24px;
-  text-align: center;
-  overflow: visible !important;
-}
-.step-num {
-  position: absolute;
-  top: -20px; left: 28px;
-  transform: none;
-  width: 44px; height: 44px;
-  border-radius: 50%;
-  background: transparent;
-  display: grid; place-items: center;
-  font-weight: 900;
-  font-size: 1.05rem;
-  box-shadow: none;
-  filter: var(--glow-cyan);
-  /* 0.5px 渐变描边 + 空心发光圆 */
-  border: 0.5px solid transparent;
-  background-clip: padding-box;
-}
-.step-num::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 0.5px;
-  background: linear-gradient(135deg, rgba(3,252,254,0.8) 0%, rgba(255,255,255,0.1) 100%);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-          mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-}
-.step-num span {
-  color: var(--accent-cyan);
-  font-size: 1.3rem;
-  font-weight: 900;
-  font-family: 'JetBrains Mono','Courier New',monospace;
-}
-.step-card h4 {
-  margin: 12px 0 8px;
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-.step-card p {
-  color: var(--text-secondary);
-  font-size: 0.92rem;
-  line-height: 1.8;
-}
-.signup-actions {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-/* ---------- 12. 关于我们 · 加入收获 ---------- */
-.about-intro {
-  padding: 36px 40px;
-  color: var(--text-secondary);
-  border-left: 4px solid var(--accent-cyan);
-  box-shadow: inset 30px 0 60px rgba(3,252,254,0.04);
-}
-.benefits-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 18px;
-}
-.benefit-card {
-  padding: 30px 22px;
-  text-align: center;
-}
-.benefit-ic {
-  width: 52px; height: 52px;
-  background: transparent;
-  border-radius: 0;
-  display: grid; place-items: center;
-  font-size: 0;
-  margin: 0 auto 18px;
-  box-shadow: none;
-  filter: var(--glow-cyan);
-}
-.benefit-ic svg {
-  width: 38px; height: 38px;
-  stroke: var(--accent-cyan);
-  stroke-width: 1.5;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.benefit-card h4 {
-  font-size: 1.05rem;
-  font-weight: 800;
-  margin-bottom: 10px;
-  color: var(--text-primary);
-}
-.benefit-card p {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  line-height: 1.8;
-}
-
-/* ---------- 13. 页脚 ---------- */
-.footer {
-  margin-top: 60px;
-  padding: 28px 0;
-  border-top: 1px solid var(--border-light);
-  background: rgba(0,0,0,0.2);
-  color: var(--text-muted);
-  font-size: 0.88rem;
-}
-.footer-inner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-/* ---------- 14. 响应式：平板 & 手机 ---------- */
-@media (max-width: 1100px) {
-  .holo-row-bottom { grid-template-columns: repeat(3, 1fr); }
-  .benefits-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 900px) {
-  .hero-inner { padding: 40px 24px; }
-  .hero-title { font-size: 2.1rem; }
-  .hero-stats { grid-template-columns: repeat(2,1fr); }
-  .nav-links { justify-content: flex-start; gap: 2px; }
-  .level1-link { padding: 8px 12px; font-size: 0.88rem; }
-  .section-title h2 { font-size: 1.7rem; }
-  .panel-grid { grid-template-columns: 1fr; }
-  .steps-grid { grid-template-columns: 1fr; }
-  .tab-panel { padding: 28px 20px; }
-  .signup-glass { padding: 40px 22px; }
-  .about-intro { padding: 28px 22px; }
-  .holo-row-top { grid-template-columns: 1fr; }
-  .holo-row-bottom { grid-template-columns: repeat(2, 1fr); }
-  .capsule-tabs {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    max-width: 100%;
-    border-radius: 24px;
-    scrollbar-width: thin;
-  }
-  .capsule-tabs::-webkit-scrollbar { height: 4px; }
-  .capsule-tabs::-webkit-scrollbar-thumb { background: rgba(3,252,254,0.4); border-radius: 2px; }
-}
-@media (max-width: 640px) {
-  .container { padding: 0 16px; }
-  .nav-container { padding: 0 18px; gap: 12px; }
-  .nav-logo span:last-of-type { display: none; }
-  #nav-right-links { display: none; }   /* 手机把右上登录报名塞进导航菜单项的登录处（登录/注册页单独入口还是有） */
-  .hero { padding: 30px 14px 20px; }
-  .hero-title { font-size: 1.8rem; }
-  .hero-subtitle { font-size: 0.96rem; }
-  .stat-num { font-size: 1.55rem; }
-  .section { padding: 50px 0; }
-  .hologram-section { padding: 0 14px 50px; }
-  .holo-row-bottom { grid-template-columns: 1fr; }
-  .benefits-grid { grid-template-columns: 1fr; }
-  .signup-container { padding: 30px 14px 10px; }
-  .btn-large { padding: 14px 28px; font-size: 0.98rem; }
-  .panel-title { font-size: 1.35rem; }
-  .footer-inner { flex-direction: column; text-align: center; }
-}
-
-/* ---------- 15. 注册 / 登录 / 管理员（子页面继承样式）---------- */
-/* 认证卡片（登录/注册/管理员页的主卡片）*/
-.auth-page { min-height: calc(100vh - var(--nav-height)); display: grid; place-items: center; padding: 40px 24px; }
-.auth-card {
-  width: 100%;
-  max-width: 560px;
-  padding: 36px 34px;
-}
-/* ---------- 表单页布局（登录 / 报名）：100vh 垂直+水平居中 ---------- */
-.form-page {
-  min-height: calc(100vh - var(--nav-height, 64px) - 80px);
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;   /* 短内容居中显示，长内容不会被 navbar 裁切（自动顶间距 + 可滚动） */
-  padding: 56px 20px 40px;
-  box-sizing: border-box;
-}
-.form-card {
-  width: 100%;
-  max-width: 460px;
-  background: linear-gradient(180deg, rgba(15,22,40,0.55) 0%, rgba(11,16,28,0.45) 100%);
-  backdrop-filter: blur(14px) saturate(125%);
-  -webkit-backdrop-filter: blur(14px) saturate(125%);
-  border: 0.5px solid transparent;
-  border-radius: var(--radius-lg);
-  background-clip: padding-box;
-  padding: 34px 32px 28px;
-  position: relative;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.35), 0 14px 36px rgba(0,0,0,0.22), 0 0 28px rgba(3,252,254,0.08);
-}
-/* 报名页卡片更宽一点（max-width 由 register.html inline 720px 覆盖，这里只补 padding） */
-.form-card::after {
-  content: '';
-  position: absolute;
-  left: 8%; right: 8%; top: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(3,252,254,0.9) 20%, rgba(255,255,255,0.95) 50%, rgba(3,252,254,0.9) 80%, transparent 100%);
-  box-shadow: 0 0 10px rgba(3,252,254,0.6), 0 0 22px rgba(3,252,254,0.25);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-}
-.form-card h1 {
-  font-size: 1.5rem;
-  font-weight: 800;
-  margin-bottom: 6px;
-  background: var(--gradient-text);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  letter-spacing: -0.01em;
-}
-.form-sub {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  margin-bottom: 22px;
-  line-height: 1.7;
-}
-/* 登录双 Tab 切换 */
-.auth-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  background: rgba(255,255,255,0.035);
-  border: 1px solid var(--border-light);
-  border-radius: 999px;
-  padding: 4px;
-  margin-bottom: 22px;
-}
-.auth-tab-btn {
-  padding: 9px 10px;
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  border-radius: 999px;
-  background: transparent;
-  transition: all 0.25s ease;
-  white-space: nowrap;
-}
-.auth-tab-btn.active {
-  background: linear-gradient(90deg, #03FCFE 0%, #3B82F6 100%);
-  color: #0a0f1d;
-  box-shadow: 0 3px 12px rgba(3,252,254,0.35), inset 0 0 0 0.5px rgba(255,255,255,0.6);
-}
-.auth-title {
-  font-size: 1.25rem;
-  font-weight: 800;
-  text-align: center;
-  margin-bottom: 6px;
-}
-.auth-subtitle {
-  text-align: center;
-  color: var(--text-muted);
-  margin-bottom: 22px;
-  font-size: 0.88rem;
-  line-height: 1.6;
-}
-.form-group { margin-bottom: 18px; }
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-}
-@media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } }
-label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-.req { color: var(--accent-gold); margin-left: 2px; }
-.form-control {
-  width: 100%;
-  padding: 11px 14px;
-  border-radius: var(--radius-sm);
-  background: rgba(255,255,255,0.04);
-  border: 1.5px solid var(--border-light);
-  color: var(--text-primary);
-  font-size: 0.95rem;
-  font-family: inherit;
-  transition: all 0.25s;
-}
-.form-control::placeholder { color: #64748b; }
-.form-control:focus {
-  outline: none;
-  border-color: var(--accent-cyan);
-  background: rgba(3,252,254,0.04);
-  box-shadow: 0 0 0 3px rgba(3,252,254,0.1);
-}
-.form-control:disabled { opacity: 0.5; cursor: not-allowed; }
-select.form-control { cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none; }
-select.form-control::-ms-expand { display: none; }
-textarea.form-control { resize: vertical; min-height: 100px; line-height: 1.7; }
-/* ---------- 关键：下拉展开时的 <option> 强制可配色 ----------
-   Windows 原生 select 展开后使用浅色背景（米白/纯白），
-   若继承暗色主题的 --text-primary（近白），则白字白底完全看不见。
-   显式给 option 指定深色前景 + 浅色背景（hover/选中项由浏览器 OS 处理）。 */
-select.form-control option,
-.form-control option {
-  background: #ffffff;
-  color: #0f172a;            /* 深色文字：确保白底下拉中清晰可读 */
-  font-size: 0.95rem;
-  padding: 8px 12px;
-}
-select.form-control option:checked {
-  background: #0891b2;        /* 选中项：青色底 + 白字，辨识度高 */
-  color: #ffffff;
-}
-/* Safari / Chrome 自定义下拉箭头（不影响 option） */
-select.form-control {
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--accent-cyan) 50%),
-    linear-gradient(135deg, var(--accent-cyan) 50%, transparent 50%);
-  background-position:
-    calc(100% - 20px) 50%,
-    calc(100% - 12px) 50%;
-  background-size: 8px 8px, 8px 8px;
-  background-repeat: no-repeat;
-  padding-right: 36px;
-}
-.form-tips {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  line-height: 1.6;
-}
-.hint-line { margin-top: 6px; font-size: 0.82rem; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between; }
-.hint-line a { color: var(--accent-cyan); font-weight: 600; }
-.hint-line a[style*="pointer-events:none"] { color: var(--text-muted); }
-.btn-submit {
-  width: 100%;
-  padding: 13px;
-  margin-top: 8px;
-  font-size: 1rem;
-  justify-content: center;
-}
-.form-footer { margin-top: 22px; text-align: center; color: var(--text-muted); font-size: 0.9rem; }
-.form-footer a { color: var(--accent-cyan); font-weight: 600; }
-#otp-hint-line { color: var(--text-muted); }
-.alert-box {
-  padding: 12px 16px;
-  border-radius: var(--radius-sm);
-  margin-bottom: 18px;
-  font-size: 0.92rem;
-  line-height: 1.7;
-  border: 1px solid;
-}
-.alert-success {
-  background: rgba(34,197,94,0.1);
-  color: #bbf7d0;
-  border-color: rgba(34,197,94,0.35);
-}
-.alert-error {
-  background: rgba(239,68,68,0.1);
-  color: #fecaca;
-  border-color: rgba(239,68,68,0.35);
-}
-.identity-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 22px;
-  margin-bottom: 20px;
-  gap: 16px;
-  background: linear-gradient(135deg, rgba(3,252,254,0.10), rgba(34,197,94,0.06));
-  border: 1px solid rgba(3,252,254,0.3);
-  border-radius: var(--radius-md);
-}
-.identity-card .ic-left { display:flex; align-items:center; gap:14px; }
-.identity-card .check-ic {
-  width: 44px; height: 44px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #22c55e, #03FCFE);
-  color: #fff;
-  display: grid; place-items: center;
-  font-size: 1.4rem;
-  box-shadow: 0 8px 18px rgba(34,197,94,0.35);
-}
-.identity-card .text-1 { font-weight: 800; color: var(--text-primary); font-size: 1rem; }
-.identity-card .text-2 { color: var(--text-secondary); font-size: 0.88rem; }
-.identity-card .user-email-box {
-  font-family: 'JetBrains Mono','Courier New',monospace;
-  color: var(--accent-cyan);
-  font-weight: 700;
-  background: rgba(0,0,0,0.2);
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(3,252,254,0.25);
-}
-@media (max-width: 640px) {
-  .identity-card { flex-direction: column; align-items: flex-start; }
-}
-
-/* 管理员页面 */
-.admin-layout {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 30px 24px;
-}
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 28px;
-}
-@media (max-width: 900px) { .stats-row { grid-template-columns: repeat(2,1fr); } }
-.stat-box {
-  padding: 24px;
-  border-radius: var(--radius-md);
-}
-.stat-box .n {
-  font-size: 2.1rem;
-  font-weight: 900;
-  margin-bottom: 6px;
-  font-family: 'JetBrains Mono','Courier New',monospace;
-}
-.stat-box .l { color: var(--text-muted); font-size: 0.88rem; }
-.stat-box.s-pending .n { color: var(--accent-gold); }
-.stat-box.s-approved .n { color: var(--accent-green); }
-.stat-box.s-rejected .n { color: var(--accent-red); }
-.stat-box.s-total .n    { color: var(--accent-cyan); }
-.filter-bar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.filter-bar .form-control { flex: 1; min-width: 200px; }
-.status-badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-.badge-pending  { background: rgba(250,204,21,0.12); color: var(--accent-gold); border: 1px solid var(--accent-gold-dim); }
-.badge-approved { background: rgba(34,197,94,0.12);  color: var(--accent-green); border: 1px solid rgba(34,197,94,0.3); }
-.badge-rejected { background: rgba(239,68,68,0.12);  color: var(--accent-red); border: 1px solid rgba(239,68,68,0.3); }
-.table-wrap {
-  overflow-x: auto;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-light);
-  background: rgba(255,255,255,0.02);
-}
-table.applicant-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 1000px;
-}
-.applicant-table th, .applicant-table td {
-  padding: 14px 16px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-light);
-  font-size: 0.9rem;
-  vertical-align: top;
-}
-.applicant-table th {
-  background: rgba(3,252,254,0.05);
-  color: var(--text-primary);
-  font-weight: 700;
-  white-space: nowrap;
-  position: sticky; top:0;
-}
-.applicant-table tr:hover td { background: rgba(255,255,255,0.02); }
-.actions-cell { display: flex; gap: 8px; white-space: nowrap; }
-.btn-approve, .btn-reject, .btn-detail {
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  transition: .2s;
-}
-.btn-approve { background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.3); }
-.btn-approve:hover { background: rgba(34,197,94,0.25); }
-.btn-reject  { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
-.btn-reject:hover  { background: rgba(239,68,68,0.25); }
-.btn-detail  { background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.3); }
-.btn-detail:hover  { background: rgba(59,130,246,0.25); }
-
-/* ============================================================ */
-/* 管理员控制台 · 全新光影风格（极光玻璃 + 顶部大 Tab）          */
-/* ============================================================ */
-.admin-page {
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 32px 28px 80px;
-}
-.admin-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-  margin-bottom: 28px;
-  flex-wrap: wrap;
-}
-.admin-header-left { text-align: left; }
-.admin-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: rgba(3,252,254,0.08);
-  border: 1px solid rgba(3,252,254,0.3);
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-  margin-bottom: 14px;
-  letter-spacing: 0.05em;
-}
-.admin-badge-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--accent-cyan);
-  box-shadow: 0 0 10px var(--accent-cyan);
-  animation: pulse 1.6s ease-in-out infinite;
-}
-@keyframes pulse { 0%,100% { opacity: 1;} 50% { opacity: 0.4;} }
-.admin-title {
-  font-size: 1.85rem;
-  font-weight: 800;
-  color: var(--text-primary);
-  letter-spacing: 0.02em;
-  margin-bottom: 6px;
-  line-height: 1.3;
-}
-.admin-subtitle {
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1.6;
-}
-
-/* ---------- 顶部大 Tab ---------- */
-.admin-tabs {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 28px;
-  padding: 10px;
-  background: linear-gradient(180deg, rgba(15,22,40,0.55) 0%, rgba(11,16,28,0.45) 100%);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-glass);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  flex-wrap: wrap;
-  position: relative;
-}
-.admin-tabs::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: var(--radius-lg);
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 40%);
-}
-.admin-tab {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: var(--radius-md);
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.25s ease;
-  position: relative;
-  flex: 0 0 auto;
-  border: 1px solid transparent;
-}
-.admin-tab:hover {
-  background: rgba(255,255,255,0.04);
-  color: var(--text-primary);
-}
-.admin-tab.active {
-  background: linear-gradient(135deg, rgba(3,252,254,0.95) 0%, rgba(59,130,246,0.95) 100%);
-  color: #071022;
-  font-weight: 800;
-  box-shadow: 0 4px 14px rgba(3,252,254,0.35), inset 0 1px 0 rgba(255,255,255,0.3);
-  border-color: rgba(255,255,255,0.25);
-}
-.admin-tab-icon { font-size: 1.05rem; }
-.admin-tab-count {
-  min-width: 22px;
-  height: 22px;
-  padding: 0 7px;
-  border-radius: 11px;
-  background: rgba(0,0,0,0.25);
-  color: inherit;
-  font-size: 0.75rem;
-  font-weight: 800;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.admin-tab.active .admin-tab-count { background: rgba(7,16,34,0.35); color: #fff; }
-
-/* Tab 面板 */
-.admin-tab-panel { display: none; }
-.admin-tab-panel.active { display: block; animation: fadeIn 0.35s ease; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: none;} }
-
-/* ---------- 玻璃卡片通用 ---------- */
-.glass-card, .glass-filter, .glass-table, .glass-card-inner {
-  background: linear-gradient(180deg, rgba(20,27,43,0.55) 0%, rgba(13,17,23,0.5) 100%);
-  border: 1px solid var(--border-glass);
-  border-radius: var(--radius-lg);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  position: relative;
-  overflow: hidden;
-}
-.glass-card::before, .glass-filter::before, .glass-table::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 35%);
-}
-.section-card { padding: 26px 28px; margin-bottom: 24px; }
-.section-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-.card-tag {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 4px;
-  background: rgba(3,252,254,0.1);
-  border: 1px solid rgba(3,252,254,0.25);
-  color: var(--accent-cyan);
-  font-family: 'JetBrains Mono','Courier New',monospace;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  margin-bottom: 10px;
-}
-.section-card-header h2 {
-  font-size: 1.3rem;
-  font-weight: 800;
-  margin-bottom: 6px;
-}
-.section-desc-left {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  line-height: 1.7;
-  text-align: left;
-}
-.section-desc-left code {
-  background: rgba(0,0,0,0.3);
-  padding: 2px 8px;
-  border-radius: 4px;
-  color: var(--accent-cyan);
-  font-family: 'JetBrains Mono','Courier New',monospace;
-  font-size: 0.85rem;
-}
-.search-box-right { min-width: 280px; }
-
-/* ---------- 统计卡片（玻璃 + 左右结构） ---------- */
-.admin-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
-}
-@media (max-width: 980px) { .admin-stats { grid-template-columns: repeat(2,1fr); } }
-@media (max-width: 540px) { .admin-stats { grid-template-columns: 1fr; } }
-.admin-stats .stat-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px 22px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-glass);
-  background: linear-gradient(180deg, rgba(20,27,43,0.6) 0%, rgba(13,17,23,0.5) 100%);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  position: relative;
-  overflow: hidden;
-}
-.admin-stats .stat-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 40%);
-  pointer-events: none;
-}
-.admin-stats .stat-icon {
-  width: 54px; height: 54px;
-  border-radius: 14px;
-  display: grid; place-items: center;
-  font-size: 1.5rem;
-  flex-shrink: 0;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border-light);
-}
-.admin-stats .stat-card.total .stat-icon    { background: linear-gradient(135deg, rgba(3,252,254,0.22), rgba(3,252,254,0.06)); border-color: rgba(3,252,254,0.35); }
-.admin-stats .stat-card.pending .stat-icon  { background: linear-gradient(135deg, rgba(250,204,21,0.22), rgba(250,204,21,0.06)); border-color: rgba(250,204,21,0.35); }
-.admin-stats .stat-card.approved .stat-icon { background: linear-gradient(135deg, rgba(34,197,94,0.22), rgba(34,197,94,0.06)); border-color: rgba(34,197,94,0.35); }
-.admin-stats .stat-card.rejected .stat-icon { background: linear-gradient(135deg, rgba(239,68,68,0.22), rgba(239,68,68,0.06)); border-color: rgba(239,68,68,0.35); }
-.admin-stats .stat-body .num {
-  font-size: 2.05rem;
-  font-weight: 900;
-  font-family: 'JetBrains Mono','Courier New',monospace;
-  line-height: 1.1;
-  margin-bottom: 4px;
-}
-.admin-stats .stat-body .label {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 500;
-}
-.admin-stats .stat-card.total    .num { color: var(--accent-cyan); }
-.admin-stats .stat-card.pending  .num { color: var(--accent-gold); }
-.admin-stats .stat-card.approved .num { color: var(--accent-green); }
-.admin-stats .stat-card.rejected .num { color: var(--accent-red); }
-
-/* 筛选条玻璃化 */
-.glass-filter {
-  padding: 18px 20px;
-  margin-bottom: 22px;
-}
-.filter-bar .form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 180px;
-}
-.filter-bar .form-group.grow { flex: 1 1 240px; }
-.filter-bar label {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  font-weight: 600;
-  margin-left: 2px;
-}
-
-/* 表格玻璃化 */
-.glass-table { overflow: hidden; }
-.table-wrapper { overflow-x: auto; }
-.table-wrapper table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 960px;
-}
-.table-wrapper th, .table-wrapper td {
-  padding: 13px 16px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-light);
-  font-size: 0.88rem;
-  vertical-align: middle;
-  color: var(--text-secondary);
-}
-.table-wrapper th {
-  background: linear-gradient(180deg, rgba(3,252,254,0.08) 0%, rgba(3,252,254,0.03) 100%);
-  color: var(--text-primary);
-  font-weight: 700;
-  white-space: nowrap;
-  position: sticky; top: 0;
-  font-size: 0.82rem;
-  letter-spacing: 0.02em;
-  text-transform: none;
-}
-.table-wrapper th::after {
-  content: '';
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
-  opacity: 0.5;
-}
-.table-wrapper tbody tr:hover td {
-  background: rgba(3,252,254,0.04);
-  color: var(--text-primary);
-}
-.table-wrapper tbody tr:last-child td { border-bottom: none; }
-.table-wrapper td strong { color: var(--text-primary); font-weight: 700; }
-.table-wrapper .empty {
-  padding: 40px 20px;
-  color: var(--text-muted);
-  text-align: center;
-}
-.table-wrapper td .actions {
-  display: flex;
-  gap: 6px;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-}
-
-/* 状态 Badge */
-.badge-pending  { background: rgba(250,204,21,0.12); color: var(--accent-gold); border: 1px solid var(--accent-gold-dim); }
-.badge-approved { background: rgba(34,197,94,0.12);  color: var(--accent-green); border: 1px solid rgba(34,197,94,0.3); }
-.badge-rejected { background: rgba(239,68,68,0.12);  color: var(--accent-red); border: 1px solid rgba(239,68,68,0.3); }
-.badge-verified { background: rgba(3,252,254,0.12); color: var(--accent-cyan); border: 1px solid var(--accent-cyan-dim); }
-.badge-unverified { background: rgba(148,163,184,0.1); color: var(--text-muted); border: 1px solid var(--border-light); }
-.badge-admin    { background: rgba(168,85,247,0.14); color: #c4b5fd; border: 1px solid rgba(168,85,247,0.4); }
-.badge-user     { background: rgba(148,163,184,0.1); color: var(--text-secondary); border: 1px solid var(--border-light); }
-
-/* 用户与权限 · 开关按钮 */
-.admin-toggle {
-  --w: 44px; --h: 24px;
-  position: relative;
-  width: var(--w); height: var(--h);
-  border-radius: 999px;
-  background: rgba(148,163,184,0.25);
-  border: 1px solid var(--border-light);
-  cursor: pointer;
-  transition: all 0.3s;
-  display: inline-block;
-  flex-shrink: 0;
-  vertical-align: middle;
-}
-.admin-toggle::after {
-  content: '';
-  position: absolute;
-  top: 2px; left: 2px;
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  background: #cbd5e1;
-  transition: all 0.3s;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
-}
-.admin-toggle.on {
-  background: linear-gradient(135deg, rgba(3,252,254,0.8), rgba(59,130,246,0.8));
-  border-color: rgba(3,252,254,0.4);
-  box-shadow: 0 0 12px rgba(3,252,254,0.3);
-}
-.admin-toggle.on::after { left: 22px; background: #fff; }
-.admin-toggle.disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  background: rgba(168,85,247,0.3);
-  border-color: rgba(168,85,247,0.4);
-}
-.admin-toggle.disabled::after { background: #e9d5ff; }
-
-.super-admin-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(168,85,247,0.14);
-  color: #c4b5fd;
-  border: 1px solid rgba(168,85,247,0.35);
-  font-size: 0.72rem;
-  font-weight: 700;
-  margin-left: 6px;
-}
-
-/* 导出面板 */
-.export-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 18px;
-}
-@media (max-width: 780px) { .export-grid { grid-template-columns: 1fr; } }
-.export-item {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 22px 24px;
-  background: linear-gradient(180deg, rgba(3,252,254,0.05) 0%, transparent 100%);
-}
-.export-icon {
-  width: 60px; height: 60px;
-  border-radius: 16px;
-  display: grid; place-items: center;
-  font-size: 1.8rem;
-  background: linear-gradient(135deg, rgba(3,252,254,0.2), rgba(59,130,246,0.1));
-  border: 1px solid rgba(3,252,254,0.3);
-  flex-shrink: 0;
-}
-.export-info h3 { font-size: 1.05rem; margin-bottom: 6px; font-weight: 800; }
-.export-info p  { color: var(--text-muted); font-size: 0.85rem; line-height: 1.6; margin-bottom: 12px; }
-
-/* 通知占位卡 */
-.notice-card {
-  padding: 50px 30px;
-  text-align: center;
-  border-radius: var(--radius-md);
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(3,252,254,0.03),
-    rgba(3,252,254,0.03) 12px,
-    transparent 12px,
-    transparent 24px
-  );
-  border: 1.5px dashed rgba(3,252,254,0.25);
-}
-
-/* 全站公告横幅 */
-.notice-banner {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 14px 44px 14px 18px;
-  margin: 12px 0 0;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, rgba(250,204,21,0.10) 0%, rgba(250,204,21,0.04) 100%);
-  border: 1px solid rgba(250,204,21,0.35);
-  box-shadow: 0 0 16px rgba(250,204,21,0.10);
-}
-.notice-banner-icon { font-size: 1.4rem; flex-shrink: 0; margin-top: 2px; }
-.notice-banner-body { flex: 1; min-width: 0; }
-.notice-banner-title { font-weight: 800; color: var(--accent-gold); font-size: 0.95rem; margin-bottom: 4px; }
-.notice-banner-content { color: var(--text-secondary); font-size: 0.88rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
-.notice-banner-meta { color: var(--text-muted); font-size: 0.75rem; margin-top: 4px; }
-.notice-banner-close {
-  position: absolute; top: 10px; right: 12px;
-  background: none; border: none; color: var(--text-muted);
-  font-size: 1.2rem; cursor: pointer; line-height: 1; padding: 2px 6px;
-  border-radius: 4px; transition: color 0.2s, background 0.2s;
-}
-.notice-banner-close:hover { color: var(--accent-gold); background: rgba(250,204,21,0.1); }
+// ---------- 用户与权限 ----------
+const usersBody   = $('users-body');
+const userSearch  = $('user-search');
+const tabCountUsers = $('tab-count-users');
+let allUsers = [];
 
 /* ========================================================
- * 管理员页 Modal（报名详情弹窗）
+ * RBAC 0：是否当前账号是 SUPER_ADMIN（邮箱匹配）
  * ======================================================== */
-.modal-mask {
-  position: fixed; inset: 0; z-index: 9999;
-  background: rgba(0,0,0,0.72);
-  backdrop-filter: blur(6px);
-  display: none; align-items: center; justify-content: center;
-  padding: 20px;
-  animation: modalFadeIn 0.18s ease;
-}
-.modal-mask.show { display: flex; }
-@keyframes modalFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-.modal {
-  background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%);
-  border: 1px solid rgba(3,252,254,0.25);
-  border-radius: 16px;
-  width: 100%; max-width: 640px;
-  max-height: 88vh;
-  display: flex; flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(3,252,254,0.08);
-  animation: modalSlideIn 0.2s ease;
-  overflow: hidden;
-}
-@keyframes modalSlideIn {
-  from { transform: translateY(24px) scale(0.97); opacity: 0; }
-  to   { transform: translateY(0) scale(1); opacity: 1; }
-}
-.modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 18px 22px 14px;
-  border-bottom: 1px solid rgba(3,252,254,0.15);
-  flex-shrink: 0;
-}
-.modal-header h3 {
-  margin: 0; font-size: 1.1rem; color: var(--accent-cyan); font-weight: 700;
-}
-.modal-close {
-  background: none; border: none; color: var(--text-muted);
-  font-size: 1.6rem; cursor: pointer; line-height: 1; padding: 2px 8px;
-  border-radius: 6px; transition: color 0.15s, background 0.15s;
-}
-.modal-close:hover { color: var(--accent-cyan); background: rgba(3,252,254,0.1); }
-.modal-body {
-  padding: 18px 22px 22px;
-  overflow-y: auto;
-  flex: 1;
-}
-.detail-grid {
-  display: grid;
-  grid-template-columns: 130px 1fr;
-  gap: 8px 14px;
-  font-size: 0.92rem;
-}
-.detail-grid .dt {
-  color: var(--text-muted); font-weight: 600; text-align: right;
-  padding-right: 4px;
-}
-.detail-grid .dd {
-  color: var(--text-primary); word-break: break-word;
+async function isCurrentUserSuperAdmin() {
+  if (CURRENT_USER_EMAIL) {
+    return CURRENT_USER_EMAIL.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  }
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !user.email) return false;
+    return user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  } catch {
+    return false;
+  }
 }
 
-/* 协会管理员名额卡片 */
-.quota-card {}
+/* ========================================================
+ * RBAC 1：启动 · 四层硬校验（访客 / 学生 / 总管理员 / 协会管理员 / 超管）
+ * ======================================================== */
+async function bootstrap() {
+  console.log('[admin] bootstrap 开始');
+  const { data: { user } } = await supabase.auth.getUser();
+  console.log('[admin] getUser:', user ? user.email : 'null');
 
-/* 身份卡 · 老样式兼容（register.html 里用了新的类） */
-.identity-card .identity-left  { display:flex; flex-direction:column; gap:4px; }
-.identity-card .identity-right { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
-.identity-title { font-weight: 800; color: var(--text-primary); font-size: 1rem; }
-.identity-hint  { color: var(--text-muted); font-size: 0.85rem; }
-.identity-label { color: var(--text-muted); font-size: 0.78rem; }
-.identity-email {
-  font-family: 'JetBrains Mono','Courier New',monospace;
-  color: var(--accent-cyan);
-  font-weight: 700;
-  background: rgba(0,0,0,0.2);
-  padding: 5px 12px;
-  border-radius: 6px;
-  border: 1px solid rgba(3,252,254,0.25);
-  font-size: 0.9rem;
-}
+  // ① 未登录 → 强制跳登录
+  if (!user) {
+    console.log('[admin] 未登录，跳转');
+    loginRequired.style.display = 'block';
+    setTimeout(() => {
+      location.href = 'login.html?redirect=' + encodeURIComponent('admin.html');
+    }, 1200);
+    return;
+  }
 
-/* 草稿条提示 */
-.draft-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(90deg, rgba(250,204,21,0.12), rgba(250,204,21,0.04));
-  border: 1px solid rgba(250,204,21,0.35);
-  color: var(--accent-gold);
-  font-size: 0.88rem;
-  line-height: 1.6;
-}
-.draft-banner .db-btns { display: flex; gap: 8px; flex-shrink: 0; }
-.draft-banner button {
-  padding: 5px 12px;
-  font-size: 0.8rem;
-  border-radius: 5px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid;
-  background: transparent;
-  transition: 0.2s;
-}
-.draft-banner .btn-restore {
-  color: #fde68a;
-  border-color: rgba(250,204,21,0.5);
-  background: rgba(250,204,21,0.1);
-}
-.draft-banner .btn-restore:hover { background: rgba(250,204,21,0.2); }
-.draft-banner .btn-discard {
-  color: var(--text-muted);
-  border-color: var(--border-light);
-}
-.draft-banner .btn-discard:hover { color: #fca5a5; border-color: rgba(239,68,68,0.4); }
+  CURRENT_USER_ID    = user.id;
+  CURRENT_USER_EMAIL = user.email || '';
 
-.draft-save-hint {
-  position: fixed;
-  bottom: 20px; right: 20px;
-  padding: 8px 14px;
-  border-radius: 6px;
-  background: rgba(34,197,94,0.9);
-  color: #fff;
-  font-size: 0.82rem;
-  font-weight: 600;
-  box-shadow: 0 6px 18px rgba(34,197,94,0.35);
-  z-index: 9999;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(8px);
-  transition: all 0.3s;
-}
-.draft-save-hint.show { opacity: 1; transform: none; }
+  // ② 获取管理员类型（含 association_admin）
+  const adminType = await getCurrentAdminType();
+  CURRENT_USER_IS_SUPER = adminType.is_super_admin ||
+    (CURRENT_USER_EMAIL && CURRENT_USER_EMAIL.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase());
+  CURRENT_USER_ASSOCIATION = adminType.association_admin || null;
 
-/* ============================================================
-   首页 · 首次登录欢迎横幅（双 CTA：先设置密码 / 去报名）
-   ============================================================ */
-.welcome-banner {
-  width: 100%;
-  padding: 14px 24px 0;
-  animation: welcomeIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes welcomeIn {
-  from { opacity: 0; transform: translateY(-12px) scale(0.985); }
-  to   { opacity: 1; transform: none; }
-}
-.welcome-banner-inner {
-  position: relative;
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 16px 22px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  overflow: hidden;
-  isolation: isolate;
-}
-.welcome-banner-inner::before {
-  /* 顶部青色高光线 */
-  content: '';
-  position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, transparent 0%, var(--accent-cyan) 30%, var(--accent-gold) 70%, transparent 100%);
-  z-index: 2;
-  pointer-events: none;
-}
-.welcome-main {
-  display: flex; align-items: center; gap: 16px;
-  min-width: 0;
-  flex: 1 1 420px;
-}
-.welcome-icon {
-  flex-shrink: 0;
-  width: 52px; height: 52px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(3,252,254,0.16) 0%, rgba(250,204,21,0.14) 100%);
-  border: 1px solid rgba(3,252,254,0.28);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 26px;
-  box-shadow: 0 0 22px rgba(3,252,254,0.14);
-}
-.welcome-text { min-width: 0; }
-.welcome-title {
-  font-size: 1.08rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-  letter-spacing: 0.2px;
-}
-.welcome-sub {
-  font-size: 0.88rem;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-.welcome-sub b { color: var(--accent-gold); font-weight: 700; }
-.welcome-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 0 0 auto;
-  position: relative;
-  padding-right: 6px;
-}
-@media (max-width: 640px) {
-  .welcome-banner-inner { padding: 14px 16px; border-radius: 14px; }
-  .welcome-icon { width: 44px; height: 44px; font-size: 22px; border-radius: 12px; }
-  .welcome-title { font-size: 1rem; }
-  .welcome-sub   { font-size: 0.82rem; }
-  .welcome-actions { width: 100%; }
-  .welcome-actions .btn-block-sm { flex: 1 1 0; justify-content: center; }
+  // 右上显示身份标签
+  let roleLabel = '';
+  if (CURRENT_USER_IS_SUPER) {
+    roleLabel = '  👑 (超级管理员)';
+  } else if (CURRENT_USER_ASSOCIATION) {
+    roleLabel = `  🔷 (${CURRENT_USER_ASSOCIATION} 协会管理员)`;
+  } else {
+    roleLabel = '  🛡 (总管理员)';
+  }
+  navUser.style.display = 'flex';
+  userEmailEl.textContent = `${user.email}${roleLabel}`;
+  $('btn-logout').addEventListener('click', async () => {
+    await supabase.auth.signOut();
+    location.href = 'login.html';
+  });
+  $('btn-as-user').addEventListener('click', () => location.href = 'index.html');
+
+  // ③ 非管理员 → 3 秒跳首页
+  console.log('[admin] 检查 isCurrentUserAdmin...');
+  const isAdmin = await isCurrentUserAdmin();
+  console.log('[admin] isCurrentUserAdmin:', isAdmin);
+  if (!isAdmin) {
+    console.log('[admin] 非管理员，跳转首页');
+    permDenied.style.display = 'block';
+    setTimeout(() => { location.href = 'index.html'; }, 3000);
+    return;
+  }
+  console.log('[admin] 管理员验证通过，显示面板');
+
+  // ④ 管理员通过 → 展开面板
+  adminPanel.style.display = 'block';
+
+  // ⑤ 【三级分级】
+  //    · 协会管理员：移除「用户与权限管理」+「分配协会管理员」DOM
+  //    · 普通总管理员：同上（仅超管可见）
+  //    · 超级管理员：全部保留
+  if (!CURRENT_USER_IS_SUPER) {
+    const restricted = document.querySelectorAll('[data-role="super"]');
+    restricted.forEach(el => el.remove());
+    // 移除「用户与权限」Tab
+    const usersTab = document.querySelector('.admin-tab[data-tab="users"]');
+    if (usersTab) usersTab.remove();
+    const usersPanel = document.getElementById('tab-panel-users');
+    if (usersPanel) usersPanel.remove();
+    injectRoleBanner(false, CURRENT_USER_ASSOCIATION);
+  } else {
+    injectRoleBanner(true, null);
+    // 超管：加载协会管理员管理面板
+    bindAssociationAdminEvents();
+  }
+
+  // ⑥ 事件绑定
+  bindTabEvents();
+  bindAuditEvents();
+  bindExportEvents();
+  bindNoticeEvents();
+
+  // ⑦ 数据加载
+  const tasks = [loadRegistrations()];
+  if (CURRENT_USER_IS_SUPER) {
+    tasks.push(loadUsers());
+    tasks.push(loadAssociationQuota());
+    tasks.push(loadAssociationAdmins());
+  }
+  tasks.push(loadNotices());
+  await Promise.all(tasks.map(p => p.catch(e => console.error('load err', e))));
 }
 
-/* 小工具类 */
-.hidden { display: none !important; }
-.mt-20 { margin-top: 20px; }
-.mb-20 { margin-bottom: 20px; }
-.loading-spinner {
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: currentColor;
-  animation: spin 0.8s linear infinite;
-  display: inline-block;
+/* ---------- 插入角色 Banner（在 Tab 容器前） ---------- */
+function injectRoleBanner(isSuper, association) {
+  const tabs = document.querySelector('.admin-tabs');
+  if (!tabs) return;
+  let bannerHTML;
+  if (isSuper) {
+    bannerHTML = `<div>👑 <b>当前账号身份：超级管理员</b>（${SUPER_ADMIN_EMAIL}）
+         · 拥有全部权限：报名审批 / 用户与权限管理 / 协会管理员分配 / 通知公告 / 导出。</div>
+       <div style="font-size:0.85rem;opacity:0.9;">🔒 本账号受系统保护：管理员身份不可被移除。</div>`;
+  } else if (association) {
+    bannerHTML = `<div>🔷 <b>当前账号身份：协会管理员</b>（${association}）</div>
+       <div style="font-size:0.85rem;opacity:0.9;">
+          您只能看到本协会（${association}）的报名申请，其他协会的申请对您不可见。<br/>
+          如需调整权限范围或分配其他协会管理员，请联系超级管理员 ${SUPER_ADMIN_EMAIL}。
+       </div>`;
+  } else {
+    bannerHTML = `<div>🛡 <b>当前账号身份：总管理员</b>（${CURRENT_USER_EMAIL || ''}）</div>
+       <div style="font-size:0.85rem;opacity:0.9;">
+          🔒 「用户与权限管理」及「用户清单导出」仅
+          <span style="color:#e9d5ff;font-weight:700;">超级管理员 ${SUPER_ADMIN_EMAIL}</span> 可用，已自动隐藏。
+       </div>`;
+  }
+  const banner = document.createElement('div');
+  banner.style.cssText = `
+    display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+    margin-bottom:16px; padding:12px 18px; border-radius:10px;
+    background:${isSuper
+      ? 'linear-gradient(90deg, rgba(168,85,247,0.16), rgba(168,85,247,0.04))'
+      : association
+        ? 'linear-gradient(90deg, rgba(6,182,212,0.14), rgba(6,182,212,0.04))'
+        : 'linear-gradient(90deg, rgba(245,158,11,0.12), rgba(245,158,11,0.03))'};
+    border:1px solid ${isSuper
+      ? 'rgba(168,85,247,0.45)'
+      : association
+        ? 'rgba(6,182,212,0.4)'
+        : 'rgba(245,158,11,0.3)'};
+    font-size:0.92rem; line-height:1.6;
+    color:${isSuper ? '#e9d5ff' : association ? '#a5f3fc' : '#fde68a'};
+  `;
+  banner.innerHTML = bannerHTML;
+  tabs.parentElement.insertBefore(banner, tabs);
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+
+// ========================================================
+// 2. Tab 切换
+// ========================================================
+function bindTabEvents() {
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      // 二次保险：若被点击的 Tab 属于 super 但当前账号不是 super → 拦截
+      if (btn.dataset.role === 'super' && !CURRENT_USER_IS_SUPER) {
+        alert('🔒 「用户与权限管理」模块仅超级管理员可访问。');
+        return;
+      }
+      const tab = btn.dataset.tab;
+      tabButtons.forEach(b => b.classList.toggle('active', b === btn));
+      tabPanels.forEach(p => p.classList.toggle('active', p.id === `tab-panel-${tab}`));
+    });
+  });
+}
+
+// ========================================================
+// 3. 报名审核模块（普通管理员 + 超级管理员 均可用）
+// ========================================================
+function bindAuditEvents() {
+  filterStatus.addEventListener('change', renderRows);
+  filterDept.addEventListener('change', renderRows);
+  filterSearch.addEventListener('input', debounce(renderRows, 250));
+  $('btn-refresh').addEventListener('click', () => {
+    loadRegistrations();
+    if (CURRENT_USER_IS_SUPER) loadUsers();
+  });
+  modalClose.addEventListener('click', () => modalMask.classList.remove('show'));
+  modalMask.addEventListener('click', (e) => {
+    if (e.target === modalMask) modalMask.classList.remove('show');
+  });
+}
+
+async function loadRegistrations() {
+  tbody.innerHTML = '<tr><td colspan="10" class="empty">加载中...</td></tr>';
+  try {
+    let query = supabase
+      .from('registrations')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    // 协会管理员：只查自己协会的申请
+    if (CURRENT_USER_ASSOCIATION && !CURRENT_USER_IS_SUPER) {
+      query = query.eq('first_department', CURRENT_USER_ASSOCIATION);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    allRows = data || [];
+    updateStats();
+    renderRows();
+  } catch (err) { renderError(tbody, 10, err); }
+}
+
+function updateStats() {
+  statTotal.textContent    = allRows.length;
+  statPending.textContent  = allRows.filter(r => r.status === 'pending').length;
+  statApproved.textContent = allRows.filter(r => r.status === 'approved').length;
+  statRejected.textContent = allRows.filter(r => r.status === 'rejected').length;
+  if (tabCountAudit) tabCountAudit.textContent = allRows.length;
+  if (tabCountUsers && CURRENT_USER_IS_SUPER) tabCountUsers.textContent = allUsers.length;
+}
+
+function renderRows() {
+  const s = filterStatus.value;
+  const d = filterDept.value;
+  const q = filterSearch.value.trim().toLowerCase();
+
+  const rows = allRows.filter(r => {
+    if (s && r.status !== s) return false;
+    if (d && r.first_department !== d) return false;
+    if (q) {
+      const hay = `${r.name} ${r.student_id} ${r.email} ${r.phone} ${r.college} ${r.major}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty">暂无匹配的报名记录</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const st = STATUS_LABEL[r.status] || STATUS_LABEL.pending;
+    const created = new Date(r.created_at).toLocaleString('zh-CN');
+    // 协会管理员标签
+    const deptBadge = r.first_department === CURRENT_USER_ASSOCIATION
+      ? `<span style="color:var(--accent-cyan);font-size:0.82rem;"> 🔷 本协会</span>`
+      : '';
+    return `
+      <tr>
+        <td><strong>${escapeHtml(r.name)}</strong></td>
+        <td>${escapeHtml(r.student_id)}</td>
+        <td>${escapeHtml(r.college)}<br/><span style="color:var(--text-muted);font-size:0.85rem;">${escapeHtml(r.major)}</span></td>
+        <td>${escapeHtml(r.grade || '-')}</td>
+        <td>${escapeHtml(r.first_department || '-')}${deptBadge}</td>
+        <td>${escapeHtml(r.phone || '-')}</td>
+        <td style="color:var(--accent-cyan);font-size:0.85rem;">${escapeHtml(r.email)}</td>
+        <td><span class="status-badge badge-${st.cls.split('-')[1] || 'pending'}">${st.text}</span></td>
+        <td style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap;">${created}</td>
+        <td>
+          <div class="actions">
+            <button class="btn btn-outline" style="padding:4px 10px;font-size:0.8rem;" onclick="window.__ADMIN__.showDetail('${r.id}')">详情</button>
+            ${r.status === 'pending' ? `
+              <button class="btn btn-success" style="padding:4px 10px;font-size:0.8rem;" onclick="window.__ADMIN__.approve('${r.id}')">通过</button>
+              <button class="btn btn-danger"  style="padding:4px 10px;font-size:0.8rem;" onclick="window.__ADMIN__.reject('${r.id}')">拒绝</button>
+            ` : `
+              <button class="btn btn-outline" style="padding:4px 10px;font-size:0.8rem;" onclick="window.__ADMIN__.reset('${r.id}')">重置</button>
+            `}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function findRow(id) { return allRows.find(r => r.id === id); }
+function showDetail(id) {
+  const r = findRow(id); if (!r) return;
+  const st = STATUS_LABEL[r.status] || STATUS_LABEL.pending;
+  modalBody.innerHTML = `
+    <div class="detail-grid">
+      <div class="dt">审批状态</div><div class="dd badge-${st.cls.split('-')[1] || 'pending'}" style="display:inline-block;padding:3px 10px;border-radius:999px;"><strong>${st.text}</strong></div>
+      <div class="dt">报名时间</div><div class="dd">${fmt(r.created_at)}</div>
+      ${r.reviewed_at ? `<div class="dt">审批时间</div><div class="dd">${fmt(r.reviewed_at)}${r.reviewer_id ? `<br/><span style="color:var(--text-muted);font-size:0.8rem;">ID: ${r.reviewer_id}</span>` : ''}</div>` : ''}
+      ${r.review_note ? `<div class="dt">审批备注</div><div class="dd" style="color:${r.status==='approved'?'var(--success)':'var(--danger)'};">${escapeHtml(r.review_note)}</div>` : ''}
+
+      <div class="dt" style="margin-top:10px;border-top:1px solid var(--border-light);padding-top:10px;">姓　　名</div><div class="dd" style="margin-top:10px;border-top:1px solid var(--border-light);padding-top:10px;">${escapeHtml(r.name)}（${escapeHtml(r.gender||'-')}）</div>
+      <div class="dt">学　　号</div><div class="dd">${escapeHtml(r.student_id)}</div>
+      <div class="dt">学　　院</div><div class="dd">${escapeHtml(r.college)}</div>
+      <div class="dt">专　　业</div><div class="dd">${escapeHtml(r.major)}</div>
+      <div class="dt">年　　级</div><div class="dd">${escapeHtml(r.grade||'-')}</div>
+      <div class="dt">联系手机</div><div class="dd">${escapeHtml(r.phone||'-')}</div>
+      <div class="dt">联系邮箱</div><div class="dd">${escapeHtml(r.email)}</div>
+
+      <div class="dt" style="margin-top:10px;border-top:1px solid var(--border-light);padding-top:10px;">第一志愿</div><div class="dd" style="margin-top:10px;border-top:1px solid var(--border-light);padding-top:10px;">${escapeHtml(r.first_department||'-')}</div>
+      <div class="dt">第二志愿</div><div class="dd">${escapeHtml(r.second_department||'无 / 服从调剂')}</div>
+      <div class="dt">已有技能</div><div class="dd">${escapeHtml(r.skills||'（未填写）')}</div>
+      <div class="dt">自我介绍</div><div class="dd">${escapeHtml(r.motivation||'-').replace(/\n/g,'<br/>')}</div>
+      <div class="dt">期望 / 问题</div><div class="dd">${escapeHtml(r.expectation||'（未填写）').replace(/\n/g,'<br/>')}</div>
+    </div>
+  `;
+  modalMask.classList.add('show');
+}
+
+async function approve(id) {
+  const r = findRow(id); if (!r) return;
+  const note = prompt(`✅ 通过【${r.name}】(${r.student_id}) 的申请？\n可选：填写备注（面试安排 / QQ群号 等）：`, '恭喜通过！后续将通过邮箱+短信通知面试安排，请留意。');
+  if (note === null) return;
+  await setStatus(id, 'approved', note);
+}
+async function reject(id) {
+  const r = findRow(id); if (!r) return;
+  const note = prompt(`❌ 拒绝【${r.name}】(${r.student_id}) 的申请？\n必填：请简要说明原因：`);
+  if (note === null) return;
+  if (!note.trim()) { alert('必须填写拒绝原因'); return; }
+  await setStatus(id, 'rejected', note.trim());
+}
+async function reset(id) {
+  if (!confirm('确定重置该条记录为 "待审批" 状态吗？')) return;
+  await setStatus(id, 'pending', '');
+}
+async function setStatus(id, status, review_note) {
+  try {
+    const { error } = await supabase
+      .from('registrations')
+      .update({
+        status, review_note: review_note || null,
+        reviewed_at: status === 'pending' ? null : new Date().toISOString(),
+        reviewer_id: status === 'pending' ? null : CURRENT_USER_ID,
+      })
+      .eq('id', id);
+    if (error) throw error;
+    const idx = allRows.findIndex(r => r.id === id);
+    if (idx >= 0) allRows[idx] = { ...allRows[idx], status, review_note: review_note||null,
+      reviewed_at: status==='pending'?null:new Date().toISOString(), reviewer_id: status==='pending'?null:CURRENT_USER_ID };
+    updateStats(); renderRows();
+    alert('操作成功');
+  } catch (err) { alert('操作失败：' + (err.message || err)); }
+}
+
+// ========================================================
+// 4. 用户与权限模块【仅超管可用 · 二级分级】
+//    🔒 三重收口：① 事件不绑定  ② DOM 已 remove  ③ 函数级硬拦截
+// ========================================================
+function bindUserEvents() {
+  // 仅 super 绑定（在 bootstrap 里被调用）
+  userSearch?.addEventListener('input', debounce(renderUsers, 250));
+}
+
+/** 🔒 函数级硬拦截 1：加载用户列表 */
+async function loadUsers() {
+  if (!CURRENT_USER_IS_SUPER) {
+    // 理论上 DOM 已经被 remove，这个函数不会被触发；作为双保险
+    if (usersBody) usersBody.innerHTML = '<tr><td colspan="10" class="empty" style="color:var(--danger)">🔒 仅超级管理员可查看用户清单</td></tr>';
+    return;
+  }
+  usersBody.innerHTML = '<tr><td colspan="10" class="empty">加载中...</td></tr>';
+  try {
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('id, email, name, student_id, phone, college, major, is_admin, created_at')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    allUsers = profiles || [];
+    if (tabCountUsers) tabCountUsers.textContent = allUsers.length;
+    renderUsers();
+  } catch (err) { renderError(usersBody, 10, err); }
+}
+
+function renderUsers() {
+  const q = (userSearch?.value || '').trim().toLowerCase();
+  const list = allUsers.filter(u => {
+    if (!q) return true;
+    const hay = `${u.email||''} ${u.name||''} ${u.student_id||''} ${u.phone||''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (list.length === 0) {
+    usersBody.innerHTML = '<tr><td colspan="10" class="empty">暂无匹配用户</td></tr>';
+    return;
+  }
+
+  const registeredEmails = new Set(allRows.map(r => r.email));
+
+  usersBody.innerHTML = list.map(u => {
+    const isSuper = (u.email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+    const hasReg = registeredEmails.has(u.email);
+    const isAdminVal = !!u.is_admin;
+    return `
+      <tr>
+        <td>${hasReg
+            ? '<span class="status-badge badge-verified">🎓 已报名</span>'
+            : '<span class="status-badge badge-unverified">👤 仅注册</span>'}</td>
+        <td><strong>${escapeHtml(u.name || '-')}</strong></td>
+        <td>${escapeHtml(u.student_id || '-')}</td>
+        <td>
+          <span style="font-family:'JetBrains Mono',monospace;color:var(--accent-cyan);font-size:0.85rem;">${escapeHtml(u.email||'-')}</span>
+          ${isSuper ? '<span class="super-admin-badge">🔒 超管</span>' : ''}
+        </td>
+        <td>${escapeHtml(u.phone || '-')}</td>
+        <td>${escapeHtml(u.college || '-')}${u.major?`<br/><span style="color:var(--text-muted);font-size:0.8rem;">${escapeHtml(u.major)}</span>`:''}</td>
+        <td>${hasReg
+            ? '<span class="status-badge badge-verified">已验证</span>'
+            : '<span class="status-badge badge-unverified">待使用</span>'}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;">
+            <span class="status-badge ${isAdminVal ? 'badge-admin' : 'badge-user'}">
+              ${isAdminVal ? '🛡 管理员' : '👤 学生'}
+            </span>
+            <span class="admin-toggle ${isAdminVal ? 'on' : ''} ${isSuper ? 'disabled' : ''}"
+                  title="${isSuper ? '超级管理员受系统保护，不可修改' : (isAdminVal ? '点击降为学生' : '点击升为管理员')}"
+                  onclick="window.__ADMIN__.toggleAdmin('${u.id}', '${escapeAttr(u.email)}')">
+            </span>
+          </div>
+        </td>
+        <td style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap;">${fmt(u.created_at)}</td>
+        <td>
+          <div class="actions">
+            <button class="btn btn-outline" style="padding:4px 10px;font-size:0.8rem;" onclick="window.__ADMIN__.userDetail('${u.id}')">查看</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * 🔒 函数级硬拦截 2：切换管理员权限
+ *   1) 前端：仅 CURRENT_USER_IS_SUPER === true 才允许执行
+ *   2) 目标保护：SUPER_ADMIN_EMAIL 永远不可被降级
+ *   3) 后端最后一道：public.set_admin() 函数内部也判断调用者邮箱（见 SQL 脚本）
+ */
+async function toggleAdmin(userId, email) {
+  // 【二级拦截】非超管 → 绝对禁止（即使有人通过 console 调 window.__ADMIN__.toggleAdmin 也无效）
+  if (!CURRENT_USER_IS_SUPER) {
+    alert('🔒 权限不足！\n\n只有超级管理员（' + SUPER_ADMIN_EMAIL + '）才能分配管理员权限。');
+    return;
+  }
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+
+  // 【保护】目标账号是最高管理员本人 → 永久禁止降级
+  const isTargetSuper = (email || '').toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  if (isTargetSuper) {
+    alert(`🔒 【保护机制】\n\n最高管理员账号 ${SUPER_ADMIN_EMAIL} 禁止被移除管理员权限。\n如需变更，请直接在 Supabase Dashboard → Authentication 中手动操作。`);
+    return;
+  }
+
+  const next = !u.is_admin;
+  const verb = next ? '提升为管理员' : '降级为普通学生';
+  if (!confirm(`【👑 超级管理员操作】\n\n确认要将【${u.name || email}】 (${email})\n\n从 ${u.is_admin ? '🛡 管理员' : '👤 学生'} ${verb} 吗？\n\n（操作会同步到 auth.users.app_metadata + profiles.is_admin）`)) {
+    return;
+  }
+
+  try {
+    // 降级时同步清除 association_admin
+    if (!next) {
+      await supabase.from('profiles').update({ is_admin: false, association_admin: null }).eq('id', userId);
+      await supabase.rpc('set_admin', { user_id: userId, admin_flag: false });
+    } else {
+      await supabase.rpc('set_admin', { user_id: userId, admin_flag: true });
+    }
+    const idx = allUsers.findIndex(x => x.id === userId);
+    if (idx >= 0) allUsers[idx] = { ...allUsers[idx], is_admin: next };
+    renderUsers();
+    alert(`✅ 权限变更成功：【${u.name || email}】已${verb}。\n\n⚠️ 若目标用户当前已登录，请让他退出再登录，以便刷新 JWT 中的 is_admin 声明。`);
+  } catch (err) {
+    console.error('toggleAdmin err', err);
+    const msg = err.message || '';
+    // 函数不存在 / 命名参数对不上 → 都是同一个根因：没跑 01-fix-set-admin.sql
+    if (/could not find.*function.*set_admin|function.*set_admin.*(does|did) not exist|set_admin.*不存在|schema cache|不存在.*函数/i.test(msg)) {
+      const runSql = confirm(
+        `⚠️ 数据库缺少 public.set_admin 函数（或参数名不匹配）\n\n` +
+        `【修复步骤 · 只需做一次】\n\n` +
+        `1. 打开 Supabase → SQL Editor → New Query\n` +
+        `   （直接访问：https://supabase.com/dashboard/project/xiyaelfbkjnukfeipcwv/sql/new ）\n\n` +
+        `2. 打开本项目文件：supabase/01-fix-set-admin.sql\n` +
+        `   全选复制全部内容，粘贴到 SQL Editor\n\n` +
+        `3. 点击右下角绿色 ▶ Run（运行结果：Success. No rows returned）\n\n` +
+        `4. 回到本页面，再次尝试切换管理员开关。\n\n` +
+        `点击【确定】查看详细操作指引（打开文件所在目录）。\n` +
+        `点击【取消】使用降级方案（仅改 profiles.is_admin，目标需重新登录才生效）。`
+      );
+      if (!runSql) {
+        try {
+          const { error: err2 } = await supabase.from('profiles').update({ is_admin: next }).eq('id', userId);
+          if (err2) throw err2;
+          const idx = allUsers.findIndex(x => x.id === userId);
+          if (idx >= 0) allUsers[idx] = { ...allUsers[idx], is_admin: next };
+          renderUsers();
+          alert('⚠️ 降级方案已执行（仅更新 profiles.is_admin 字段）。\n\n' +
+            '问题：JWT 中的 app_metadata.is_admin 仍为旧值，目标用户退出重登后生效，但 RLS 用 auth.jwt() 的策略可能继续卡权限。\n\n' +
+            '强烈建议按上面指引跑 01-fix-set-admin.sql，一次解决。');
+        } catch (e2) { alert('降级方案也失败：' + (e2.message || e2)); }
+      } else {
+        // 用户点击确定 → 打开工作目录中 SQL 脚本所在文件夹（浏览器端：复制文件路径）
+        try {
+          const sqlPath = 'c:\\Users\\ASUS\\Desktop\\大创比赛\\招新网站\\supabase\\01-fix-set-admin.sql';
+          // 纯前端无法直接"打开文件夹"，退而求其次：复制路径到剪贴板 + 弹提示
+          await navigator.clipboard.writeText(sqlPath);
+          alert('📋 SQL 脚本路径已复制到剪贴板：\n\n' + sqlPath + '\n\n' +
+            '请在资源管理器中打开此目录，双击 01-fix-set-admin.sql，\n' +
+            '全部内容复制粘贴到 Supabase SQL Editor，然后点 Run。\n\n' +
+            '（同时自动打开 Supabase SQL Editor 新标签页）');
+          window.open('https://supabase.com/dashboard/project/xiyaelfbkjnukfeipcwv/sql/new', '_blank');
+        } catch (_) {
+          alert('请手动打开：c:\\Users\\ASUS\\Desktop\\大创比赛\\招新网站\\supabase\\01-fix-set-admin.sql\n\n' +
+            '复制内容 → 粘贴到 https://supabase.com/dashboard/project/xiyaelfbkjnukfeipcwv/sql/new 运行。');
+          window.open('https://supabase.com/dashboard/project/xiyaelfbkjnukfeipcwv/sql/new', '_blank');
+        }
+      }
+      return;
+    }
+    // 后端硬拦截命中：set_admin 函数内部报权限错
+    if (/仅最高管理员|权限被拒|permission|denied|super\.admin|must be|raise exception|禁止/i.test(msg)) {
+      alert('🔒 后端拒绝此操作：\n\n' + msg + '\n\n请确认当前登录账号为 ' + SUPER_ADMIN_EMAIL + ' 并重试。');
+      return;
+    }
+    alert('权限变更失败：' + msg);
+  }
+}
+
+function userDetail(userId) {
+  // 此函数普通管理员理论上也进不来（DOM被删），但加个小提示
+  if (!CURRENT_USER_IS_SUPER) {
+    alert('🔒 仅超级管理员可查看用户详细信息。');
+    return;
+  }
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+  const myRegs = allRows.filter(r => r.user_id === userId);
+  const info = [
+    `账号信息：`,
+    `  · 姓名：${u.name || '（未填写）'}`,
+    `  · 学号：${u.student_id || '（未填写）'}`,
+    `  · 邮箱：${u.email || '-'}`,
+    `  · 手机：${u.phone || '（未填写）'}`,
+    `  · 学院：${u.college || '-'}${u.major ? ' / ' + u.major : ''}`,
+    `  · 管理员：${u.is_admin ? '✅ 是' : '❌ 否'}`,
+    `  · 注册时间：${fmt(u.created_at)}`,
+    ``,
+    `历史报名记录：共 ${myRegs.length} 条`,
+    ...myRegs.map((r,i) => `  [${i+1}] ${(STATUS_LABEL[r.status]||{}).text || r.status} · ${r.first_department || '-'} · ${fmt(r.created_at)}`)
+  ].join('\n');
+  alert(info);
+}
+
+// ========================================================
+// 5. 导出模块：报名表 CSV 全部管理员可导出
+//          用户清单 CSV 仅超管（DOM 级 remove + 函数级双保险）
+// ========================================================
+function bindExportEvents() {
+  $('btn-export').addEventListener('click', exportRegistrations);
+  $('btn-export-users')?.addEventListener('click', exportUsersCSV);
+}
+
+function exportRegistrations() {
+  if (allRows.length === 0) { alert('暂无数据可导出'); return; }
+  const headers = ['状态','报名时间','审批时间','姓名','性别','学号','邮箱','手机','学院','专业','年级','第一志愿','第二志愿','已有技能','自我介绍','期望/问题','审批备注'];
+  const lines = [headers.map(csvEscape).join(',')];
+  allRows.forEach(r => {
+    lines.push([
+      (STATUS_LABEL[r.status]?.text || r.status),
+      fmt(r.created_at), r.reviewed_at ? fmt(r.reviewed_at) : '',
+      r.name, r.gender||'', r.student_id, r.email, r.phone||'',
+      r.college, r.major, r.grade||'',
+      r.first_department||'', r.second_department||'',
+      r.skills||'', r.motivation||'', r.expectation||'',
+      r.review_note||'',
+    ].map(csvEscape).join(','));
+  });
+  downloadCSV(`招新报名数据_${todayStr()}.csv`, lines);
+}
+
+/** 🔒 函数级硬拦截 3：导出用户清单（含管理员权限信息，敏感） */
+function exportUsersCSV() {
+  if (!CURRENT_USER_IS_SUPER) {
+    alert('🔒 仅超级管理员可导出用户账号清单（包含管理员权限状态字段）。');
+    return;
+  }
+  if (allUsers.length === 0) { alert('暂无用户数据'); return; }
+  const headers = ['邮箱','姓名','学号','手机','学院','专业','管理员权限','账号创建时间','报名状态'];
+  const registeredEmails = new Set(allRows.map(r => r.email));
+  const lines = [headers.map(csvEscape).join(',')];
+  allUsers.forEach(u => {
+    lines.push([
+      u.email||'', u.name||'', u.student_id||'', u.phone||'',
+      u.college||'', u.major||'',
+      u.is_admin ? '是' : '否',
+      fmt(u.created_at),
+      registeredEmails.has(u.email) ? '已提交报名' : '未提交',
+    ].map(csvEscape).join(','));
+  });
+  downloadCSV(`用户账号清单_${todayStr()}.csv`, lines);
+}
+
+// ========================================================
+// 通用工具
+// ========================================================
+function renderError(hostEl, colspan, err) {
+  console.error('加载失败详细：', err);
+  const msg     = err?.message || String(err);
+  const code    = err?.code    || '';
+  const detail  = err?.details || '';
+  let tip = '如持续出现，请截取 Console 中完整错误信息截图。';
+  if (String(code).includes('42501') || /permission|policy|violation/i.test(msg + detail)) {
+    tip = '<b>权限被拒 (RLS)</b>：请退出登录重新登录以刷新 JWT is_admin 声明；或确认 schema.sql 中 RLS 策略已更新为 auth.jwt() 版本。';
+  } else if (/infinite recursion/i.test(msg + detail)) {
+    tip = '<b>策略递归</b>：请重新运行"无递归 RLS 策略"的 SQL（替换 profiles/registrations 全部策略为 auth.jwt() 版本）。';
+  }
+  hostEl.innerHTML = `<tr><td colspan="${colspan}" class="empty" style="color:var(--danger);text-align:left;padding:24px;">
+    <div><b>加载失败：</b>${msg}</div>
+    ${code   ? `<div style="margin-top:4px;"><b>错误码：</b><code>${code}</code></div>` : ''}
+    ${detail ? `<div style="margin-top:4px;"><b>原因：</b>${detail}</div>` : ''}
+    <div style="margin-top:10px;padding:8px 10px;background:#1f2937;border-radius:6px;font-size:0.85rem;">${tip}</div>
+  </td></tr>`;
+}
+
+function debounce(fn, wait) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
+function fmt(iso) { try { return iso ? new Date(iso).toLocaleString('zh-CN') : ''; } catch { return iso||''; } }
+function todayStr() { return new Date().toISOString().slice(0,10); }
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) {
+  if (s == null) return '';
+  return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+function csvEscape(s) {
+  if (s == null) return '""';
+  const v = String(s).replace(/"/g,'""');
+  return `"${v}"`;
+}
+function downloadCSV(filename, lines) {
+  const bom = '\ufeff';
+  const blob = new Blob([bom + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// ========================================================
+// 6. 通知公告模块（所有管理员均可发布，所有人可见）
+// ========================================================
+const noticeTitleEl    = $('notice-title');
+const noticeContentEl  = $('notice-content');
+const noticesBody      = $('notices-body');
+const noticePlaceholder = $('notice-placeholder');
+
+let allNotices = [];
+
+function bindNoticeEvents() {
+  $('btn-publish-notice')?.addEventListener('click', publishNotice);
+}
+
+async function loadNotices() {
+  if (!noticesBody) return;
+  const { data, error } = await supabase.rpc('list_announcements');
+  if (error) { console.error('[公告] 加载失败:', error); return; }
+  allNotices = (data || []).filter(n => n.is_active !== false);
+  renderNotices();
+}
+
+function renderNotices() {
+  if (!noticesBody) return;
+  if (allNotices.length === 0) {
+    noticesBody.innerHTML = '<tr><td colspan="4" class="empty">暂无公告，点击上方「发布」创建第一条通知。</td></tr>';
+    return;
+  }
+  noticesBody.innerHTML = allNotices.map(n => {
+    const time = fmt(n.created_at);
+    return `<tr>
+      <td><b>${escapeHtml(n.title)}</b></td>
+      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary);font-size:0.88rem;" title="${escapeHtml(n.content)}">${escapeHtml(n.content)}</td>
+      <td style="color:var(--text-muted);font-size:0.85rem;">${escapeHtml(n.published_by_email || '-')}</td>
+      <td style="color:var(--text-muted);font-size:0.85rem;">${time}</td>
+      <td><button class="btn btn-danger" style="padding:3px 10px;font-size:0.8rem;" onclick="window.__ADMIN__.deleteNotice('${n.id}')">删除</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function publishNotice() {
+  const title   = (noticeTitleEl?.value   || '').trim();
+  const content = (noticeContentEl?.value || '').trim();
+  if (!title || !content) { showAlert($('notice-alert'), 'warning', '请填写标题和内容'); return; }
+  if (!CURRENT_USER_EMAIL) { showAlert($('notice-alert'), 'warning', '请先登录'); return; }
+
+  setLoading($('btn-publish-notice'), true, '发布中...');
+  try {
+    const { data, error } = await supabase.rpc('publish_announcement', {
+      p_title: title,
+      p_content: content,
+      p_called_by: CURRENT_USER_EMAIL,
+    });
+    if (error || !data?.ok) throw error || new Error(data?.error || '发布失败');
+    showAlert($('notice-alert'), 'success', '✅ 公告已发布，全站用户可见');
+    noticeTitleEl.value   = '';
+    noticeContentEl.value = '';
+    await loadNotices();
+  } catch (e) {
+    showAlert($('notice-alert'), 'error', '❌ ' + (e.message || '发布失败，请重试'));
+  } finally {
+    setLoading($('btn-publish-notice'), false);
+  }
+}
+
+async function deleteNotice(id) {
+  if (!confirm('确定删除这条公告？删除后所有用户将不再看到。')) return;
+  if (!CURRENT_USER_EMAIL) { alert('请先登录'); return; }
+  try {
+    const { data, error } = await supabase.rpc('delete_announcement', {
+      p_announcement_id: id,
+      p_called_by: CURRENT_USER_EMAIL,
+    });
+    if (error || !data?.ok) throw error || new Error(data?.error || '删除失败');
+    await loadNotices();
+  } catch (e) {
+    alert('❌ 删除失败：' + (e.message || ''));
+  }
+}
+
+// ========================================================
+// 5.5 协会管理员分配模块【仅超管可用】
+// ========================================================
+function bindAssociationAdminEvents() {
+  $('btn-assign-association')?.addEventListener('click', assignAssociationAdmin);
+}
+
+/** 🔒 函数级硬拦截 4：加载协会名额统计 */
+async function loadAssociationQuota() {
+  if (!CURRENT_USER_IS_SUPER) return;
+  const el = $('assoc-quota-status');
+  if (!el) return;
+  el.innerHTML = '<div class="empty">加载中...</div>';
+  try {
+    const { data, error } = await supabase.rpc('get_association_admin_stats');
+    if (error) throw error;
+    // 合并所有协会（含0人的）
+    const ALL_ASSOCS = [
+      '管理中心', '创新创业中心', '科普实践中心',
+      '人工智能与机器人协会', '奇客电子协会',
+      '电力系统与智能电网协会', '电力电子爱好者协会', '物联网与虚拟仪器协会'
+    ];
+    const statsMap = {};
+    (data || []).forEach(s => { statsMap[s.association] = s; });
+    const rows = ALL_ASSOCS.map(name => ({
+      association: name,
+      current_count: (statsMap[name]?.current_count ?? 0),
+      max_quota: 4,
+      remaining: (statsMap[name]?.remaining ?? 4),
+    }));
+    el.innerHTML = rows.map(r => {
+      const pct = Math.round((r.current_count / r.max_quota) * 100);
+      const color = r.remaining === 0 ? 'var(--danger)' : r.remaining <= 1 ? 'var(--accent-gold)' : 'var(--success)';
+      return `<div class="quota-card" style="padding:12px 14px;border-radius:10px;background:rgba(3,252,254,0.04);border:1px solid var(--border-light);">
+        <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;">${escapeHtml(r.association)}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:1.3rem;font-weight:800;color:${color};">${r.current_count}<span style="font-size:0.8rem;font-weight:400;color:var(--text-muted);"> / ${r.max_quota}</span></span>
+          <span style="font-size:0.75rem;color:var(--text-muted);">剩 ${r.remaining} 名</span>
+        </div>
+        <div style="margin-top:6px;height:4px;border-radius:999px;background:rgba(255,255,255,0.08);overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${color};border-radius:999px;transition:width 0.3s;"></div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    console.error('loadAssociationQuota err', err);
+    el.innerHTML = '<div class="empty" style="color:var(--danger);">加载失败：' + err.message + '</div>';
+  }
+}
+
+/** 🔒 函数级硬拦截 5：加载协会管理员列表 */
+async function loadAssociationAdmins() {
+  if (!CURRENT_USER_IS_SUPER) return;
+  const el = $('assoc-admins-body');
+  if (!el) return;
+  el.innerHTML = '<tr><td colspan="6" class="empty">加载中...</td></tr>';
+  try {
+    const { data, error } = await supabase.rpc('list_association_admins');
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      el.innerHTML = '<tr><td colspan="6" class="empty">暂无协会管理员，请在上方表单分配。</td></tr>';
+      return;
+    }
+    el.innerHTML = data.map(u => `
+      <tr>
+        <td><span style="color:var(--accent-cyan);font-weight:600;">${escapeHtml(u.association_admin)}</span></td>
+        <td><strong>${escapeHtml(u.name || u.email)}</strong></td>
+        <td style="font-size:0.82rem;color:var(--accent-cyan);">${escapeHtml(u.email)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="status-badge badge-admin">🛡 管理员</span>
+            ${u.is_super_admin ? '<span class="super-admin-badge">🔒 超管</span>' : ''}
+          </div>
+        </td>
+        <td style="font-size:0.8rem;color:var(--text-muted);">${fmt(u.created_at)}</td>
+        <td>
+          <button class="btn btn-danger" style="padding:3px 10px;font-size:0.8rem;"
+            onclick="window.__ADMIN__.removeAssociationAdmin('${u.user_id}')">
+            撤销
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.error('loadAssociationAdmins err', err);
+    el.innerHTML = '<tr><td colspan="6" class="empty" style="color:var(--danger);">加载失败：' + err.message + '</td></tr>';
+  }
+}
+
+/** 🔒 函数级硬拦截 6：分配协会管理员 */
+async function assignAssociationAdmin() {
+  if (!CURRENT_USER_IS_SUPER) { alert('🔒 仅超级管理员可分配协会管理员'); return; }
+  const emailInput = $('assign-user-email');
+  const assocSelect = $('assign-association');
+  const resultEl = $('assign-result');
+  const user_email = (emailInput?.value || '').trim().toLowerCase();
+  const association = assocSelect?.value || '';
+  if (!user_email || !association) {
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--accent-gold);">⚠️ 请填写用户邮箱并选择协会</span>';
+    return;
+  }
+  // 查用户 ID
+  try {
+    const { data: users, error: err1 } = await supabase
+      .from('profiles')
+      .select('id, email, name, is_admin')
+      .ilike('email', user_email)
+      .limit(5);
+    if (err1) throw err1;
+    if (!users || users.length === 0) {
+      if (resultEl) resultEl.innerHTML = '<span style="color:var(--danger);">❌ 未找到该邮箱用户，请先注册</span>';
+      return;
+    }
+    // 取第一个匹配
+    const target = users.find(u => u.is_admin === true) || users[0];
+    if (!target.is_admin) {
+      if (resultEl) resultEl.innerHTML = `<span style="color:var(--danger);">❌ 用户【${escapeHtml(target.email)}】还不是管理员，请先在「用户与权限」中提升权限。</span>`;
+      return;
+    }
+    if (!confirm(`确认将【${escapeHtml(target.name || target.email)}】(${escapeHtml(target.email)}) 设为「${association}」协会管理员？\n\n（每协会上限 4 名，超出将拒绝）`)) return;
+
+    const { data, error } = await supabase.rpc('set_association_admin', {
+      p_user_id: target.id,
+      p_association: association,
+      p_called_by: CURRENT_USER_EMAIL,
+    });
+    if (error || !data?.ok) throw new Error(data?.error || error?.message || '分配失败');
+    if (resultEl) resultEl.innerHTML = `<span style="color:var(--success);">✅ ${data.name || target.email} 已分配为「${association}」协会管理员（当前 ${data.current_count}/${data.max_quota} 名）</span>`;
+    await loadAssociationQuota();
+    await loadAssociationAdmins();
+  } catch (err) {
+    console.error('assignAssociationAdmin err', err);
+    if (resultEl) resultEl.innerHTML = `<span style="color:var(--danger);">❌ ${err.message || '分配失败'}</span>`;
+  }
+}
+
+/** 🔒 函数级硬拦截 7：撤销协会管理员 */
+async function removeAssociationAdmin(userId) {
+  if (!CURRENT_USER_IS_SUPER) { alert('🔒 仅超级管理员可撤销协会管理员'); return; }
+  const u = allUsers.find(x => x.id === userId);
+  const email = u?.email || '';
+  if (!confirm(`确认撤销【${email}】的协会管理员身份？\n\n撤销后将变为普通总管理员，可见全部报名。`)) return;
+  try {
+    await supabase.from('profiles').update({ association_admin: null }).eq('id', userId);
+    if (u) u.association_admin = null;
+    await loadAssociationQuota();
+    await loadAssociationAdmins();
+    alert('✅ 已撤销协会管理员身份');
+  } catch (err) {
+    alert('❌ 撤销失败：' + (err.message || err));
+  }
+}
+
+// 全局暴露给 onclick 使用（🔒 toggleAdmin 内部自身会二次校验权限）
+window.__ADMIN__ = { showDetail, approve, reject, reset, toggleAdmin, userDetail, assignAssociationAdmin, removeAssociationAdmin, publishNotice, deleteNotice };
+
+// 启动引导（带完整错误处理）
+(async () => {
+  try {
+    await bootstrap();
+  } catch (err) {
+    console.error('[admin] bootstrap 启动失败:', err);
+    const body = document.body;
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = 'padding:60px 20px;text-align:center;color:#f87171;font-size:1rem;';
+    errDiv.innerHTML = `
+      <div style="font-size:3rem;margin-bottom:16px;">⚠️</div>
+      <h2>管理后台启动失败</h2>
+      <p style="color:#94a3b8;margin:12px 0;">错误信息：${err.message || String(err)}</p>
+      <p style="color:#64748b;font-size:0.85rem;">
+        请确认：<br>
+        1. 已在 Supabase SQL Editor 中按顺序运行 <code>01~04</code> 四个 SQL 脚本<br>
+        2. 已用管理员账号登录<br>
+        3. 按 <strong>Ctrl+Shift+R</strong> 强制刷新页面
+      </p>
+      <a href="login.html" class="btn btn-primary" style="display:inline-block;margin-top:20px;">返回登录页</a>
+    `;
+    body.appendChild(errDiv);
+  }
+})();
