@@ -1,5 +1,5 @@
 /* ================================================================
-   广西大学众创空间 · 招新官网 2025 样式表
+/*   广西大学众创空间 · 招新官网 2026 样式表
    视觉基调：深色赛博科技（深蓝近黑）+ 青色电光（#03FCFE）+ 金色辅助
    ================================================================ */
 
@@ -550,6 +550,24 @@ img { max-width: 100%; display: block; }
   transform: translateY(-3px);
   box-shadow: 0 16px 36px rgba(3,252,254,0.38);
 }
+.btn-gold {
+  background: linear-gradient(135deg, #facc15 0%, #f59e0b 100%);
+  color: #1f1200;
+  font-weight: 700;
+  border: 1px solid rgba(250, 204, 21, 0.55);
+  box-shadow: 0 10px 25px rgba(250,204,21,0.22);
+}
+.btn-gold:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 32px rgba(250,204,21,0.36);
+}
+.btn-block-sm { padding: 9px 16px; font-size: 0.9rem; border-radius: 8px; display: inline-flex; align-items: center; text-decoration: none; }
+.btn-icon-close {
+  background: transparent; border: none; color: var(--text-muted);
+  font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 2px 8px; border-radius: 6px;
+  transition: all 0.2s;
+}
+.btn-icon-close:hover { color: #f87171; background: rgba(248,113,113,0.08); }
 .btn-outline {
   background: transparent;
   border: 1.5px solid var(--border-glass);
@@ -923,8 +941,9 @@ img { max-width: 100%; display: block; }
 }
 .step-card {
   position: relative;
-  padding: 30px 24px 24px;
+  padding: 50px 24px 24px;
   text-align: center;
+  overflow: visible !important;
 }
 .step-num {
   position: absolute;
@@ -1219,8 +1238,36 @@ label {
   box-shadow: 0 0 0 3px rgba(3,252,254,0.1);
 }
 .form-control:disabled { opacity: 0.5; cursor: not-allowed; }
-select.form-control { cursor: pointer; }
+select.form-control { cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none; }
+select.form-control::-ms-expand { display: none; }
 textarea.form-control { resize: vertical; min-height: 100px; line-height: 1.7; }
+/* ---------- 关键：下拉展开时的 <option> 强制可配色 ----------
+   Windows 原生 select 展开后使用浅色背景（米白/纯白），
+   若继承暗色主题的 --text-primary（近白），则白字白底完全看不见。
+   显式给 option 指定深色前景 + 浅色背景（hover/选中项由浏览器 OS 处理）。 */
+select.form-control option,
+.form-control option {
+  background: #ffffff;
+  color: #0f172a;            /* 深色文字：确保白底下拉中清晰可读 */
+  font-size: 0.95rem;
+  padding: 8px 12px;
+}
+select.form-control option:checked {
+  background: #0891b2;        /* 选中项：青色底 + 白字，辨识度高 */
+  color: #ffffff;
+}
+/* Safari / Chrome 自定义下拉箭头（不影响 option） */
+select.form-control {
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--accent-cyan) 50%),
+    linear-gradient(135deg, var(--accent-cyan) 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 8px 8px, 8px 8px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
+}
 .form-tips {
   font-size: 0.82rem;
   color: var(--text-muted);
@@ -1794,6 +1841,32 @@ table.applicant-table {
   border: 1.5px dashed rgba(3,252,254,0.25);
 }
 
+/* 全站公告横幅 */
+.notice-banner {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 44px 14px 18px;
+  margin: 12px 0 0;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(250,204,21,0.10) 0%, rgba(250,204,21,0.04) 100%);
+  border: 1px solid rgba(250,204,21,0.35);
+  box-shadow: 0 0 16px rgba(250,204,21,0.10);
+}
+.notice-banner-icon { font-size: 1.4rem; flex-shrink: 0; margin-top: 2px; }
+.notice-banner-body { flex: 1; min-width: 0; }
+.notice-banner-title { font-weight: 800; color: var(--accent-gold); font-size: 0.95rem; margin-bottom: 4px; }
+.notice-banner-content { color: var(--text-secondary); font-size: 0.88rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.notice-banner-meta { color: var(--text-muted); font-size: 0.75rem; margin-top: 4px; }
+.notice-banner-close {
+  position: absolute; top: 10px; right: 12px;
+  background: none; border: none; color: var(--text-muted);
+  font-size: 1.2rem; cursor: pointer; line-height: 1; padding: 2px 6px;
+  border-radius: 4px; transition: color 0.2s, background 0.2s;
+}
+.notice-banner-close:hover { color: var(--accent-gold); background: rgba(250,204,21,0.1); }
+
 /* 身份卡 · 老样式兼容（register.html 里用了新的类） */
 .identity-card .identity-left  { display:flex; flex-direction:column; gap:4px; }
 .identity-card .identity-right { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
@@ -1866,6 +1939,86 @@ table.applicant-table {
   transition: all 0.3s;
 }
 .draft-save-hint.show { opacity: 1; transform: none; }
+
+/* ============================================================
+   首页 · 首次登录欢迎横幅（双 CTA：先设置密码 / 去报名）
+   ============================================================ */
+.welcome-banner {
+  width: 100%;
+  padding: 14px 24px 0;
+  animation: welcomeIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes welcomeIn {
+  from { opacity: 0; transform: translateY(-12px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+.welcome-banner-inner {
+  position: relative;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 16px 22px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  overflow: hidden;
+  isolation: isolate;
+}
+.welcome-banner-inner::before {
+  /* 顶部青色高光线 */
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent-cyan) 30%, var(--accent-gold) 70%, transparent 100%);
+  z-index: 2;
+  pointer-events: none;
+}
+.welcome-main {
+  display: flex; align-items: center; gap: 16px;
+  min-width: 0;
+  flex: 1 1 420px;
+}
+.welcome-icon {
+  flex-shrink: 0;
+  width: 52px; height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(3,252,254,0.16) 0%, rgba(250,204,21,0.14) 100%);
+  border: 1px solid rgba(3,252,254,0.28);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px;
+  box-shadow: 0 0 22px rgba(3,252,254,0.14);
+}
+.welcome-text { min-width: 0; }
+.welcome-title {
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  letter-spacing: 0.2px;
+}
+.welcome-sub {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.welcome-sub b { color: var(--accent-gold); font-weight: 700; }
+.welcome-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  position: relative;
+  padding-right: 6px;
+}
+@media (max-width: 640px) {
+  .welcome-banner-inner { padding: 14px 16px; border-radius: 14px; }
+  .welcome-icon { width: 44px; height: 44px; font-size: 22px; border-radius: 12px; }
+  .welcome-title { font-size: 1rem; }
+  .welcome-sub   { font-size: 0.82rem; }
+  .welcome-actions { width: 100%; }
+  .welcome-actions .btn-block-sm { flex: 1 1 0; justify-content: center; }
+}
 
 /* 小工具类 */
 .hidden { display: none !important; }
