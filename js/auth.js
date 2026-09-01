@@ -3,7 +3,7 @@
  *         + 所有「报名」入口按钮 按登录态动态切换文案/链接
  *         + 已登录用户的「🔐 修改密码」入口（发送邮箱确认邮件）
  * ======================================================== */
-import { supabase, isCurrentUserAdmin, showAlert, setLoading } from './supabase-init.js';
+import { supabase, isCurrentUserAdmin, showAlert } from './supabase-init.js';
 
 const navRight = document.getElementById('nav-right-links');
 const navUser = document.getElementById('nav-user');
@@ -35,33 +35,11 @@ function applyCtaButtons(loggedIn) {
   }
 }
 
-// ---------- 工具：获取页面根相对路径（用于 redirectTo，兼容本地 file:// 和 部署后） ----------
-function getBaseUrlForRedirect() {
-  const pathname = location.pathname.replace(/[^/]*$/, '');
-  return location.origin + pathname;
-}
-
-// ---------- 已登录用户：点击「修改密码」→ 调 resetPasswordForEmail ----------
+// ---------- 已登录用户：点击「修改密码」→ 直接跳独立密码管理页 change-password.html ----------
+// （密码管理页会校验登录态 + 已确认邮箱，再直接调用 updateUser({password})，不走邮件中转）
 if (btnSetPwd) {
-  btnSetPwd.addEventListener('click', async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !user.email) return;
-    setLoading(btnSetPwd, true, '🔧 发送中...');
-    try {
-      const redirectTo = getBaseUrlForRedirect() + 'login.html?reset=1';
-      const { error } = await supabase.auth.resetPasswordForEmail(user.email, { redirectTo });
-      if (error) throw error;
-      alert(
-        '✅ 密码设置确认邮件已发送至：\n' + user.email + '\n\n' +
-        '请在 10 分钟内登录邮箱（包括垃圾箱），找到我们的邮件，点击其中的蓝色按钮即可设置新密码。\n\n' +
-        '设置完成后，下次登录即可直接使用「邮箱 + 密码」。'
-      );
-    } catch (err) {
-      console.error('[set-pwd] 发送失败:', err);
-      alert('❌ 发送失败：' + (err && err.message ? err.message : String(err)));
-    } finally {
-      setLoading(btnSetPwd, false);
-    }
+  btnSetPwd.addEventListener('click', () => {
+    location.href = 'change-password.html';
   });
 }
 
