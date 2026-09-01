@@ -353,12 +353,21 @@ img { max-width: 100%; display: block; }
   transition: all .2s;
   white-space: nowrap;
   border: 1px solid rgba(3,252,254,0.28);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
-.btn-user-action:hover {
-  background: rgba(3,252,254,0.22);
-  color: #ffffff;
-  box-shadow: 0 0 10px rgba(3,252,254,0.35);
-  transform: translateY(-1px);
+.btn-user-action.btn-pwd {
+  background: rgba(250,204,21,0.15);
+  color: #fde68a;
+  border-color: rgba(250,204,21,0.35);
+}
+.btn-user-action.btn-pwd:hover {
+  background: rgba(250,204,21,0.28);
+  color: #fef3c7;
+  box-shadow: 0 0 10px rgba(250,204,21,0.35);
 }
 .btn-logout {
   padding: 5px 12px;
