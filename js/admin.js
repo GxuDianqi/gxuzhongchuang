@@ -589,6 +589,32 @@ img { max-width: 100%; display: block; }
   background: rgba(3,252,254,0.05);
   transform: translateY(-2px);
 }
+.btn-success {
+  background: rgba(34,197,94,0.15);
+  border: 1px solid rgba(34,197,94,0.45);
+  color: #4ade80;
+  backdrop-filter: blur(8px);
+}
+.btn-success:hover {
+  background: rgba(34,197,94,0.28);
+  border-color: #4ade80;
+  color: #86efac;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(34,197,94,0.25);
+}
+.btn-danger {
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.4);
+  color: #f87171;
+  backdrop-filter: blur(8px);
+}
+.btn-danger:hover {
+  background: rgba(239,68,68,0.25);
+  border-color: #f87171;
+  color: #fecaca;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(239,68,68,0.22);
+}
 .btn-large { padding: 16px 38px; font-size: 1.05rem; border-radius: 12px; }
 
 /* ---------- 8. 全息组织架构图（悬浮式全息发光面板 + 神经网络光带连接）---------- */
