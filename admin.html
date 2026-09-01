@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>管理员审批后台 | 广西大学众创空间 · AI与机器人协会</title>
+  <title>管理员审批后台 | 广西大学众创空间 · 管理后台</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🛡️%3C/text%3E%3C/svg%3E" />
 </head>
@@ -50,84 +50,223 @@
     <div id="admin-panel" style="display:none;">
 
       <div class="admin-header">
-        <h1>🛡️ 新生报名 · 审批后台</h1>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button class="btn btn-outline" id="btn-export">📥 导出 CSV</button>
-          <button class="btn btn-outline" id="btn-refresh">🔄 刷新</button>
+        <div class="admin-header-left">
+          <div class="admin-badge">
+            <span class="admin-badge-dot"></span>
+            ADMINISTRATION CONSOLE · 仅 <strong style="color:var(--accent-cyan);">is_admin=true</strong> 账号可访问
+          </div>
+          <h1 class="admin-title">🛡️ 新生报名 · 管理控制台</h1>
+          <p class="admin-subtitle">三中心 · 五协会 · 审批 / 权限 / 通知 / 导出 一体化面板</p>
+        </div>
+        <div class="admin-header-right">
+          <button class="btn btn-outline" id="btn-refresh">🔄 刷新数据</button>
         </div>
       </div>
 
-      <!-- 统计卡片 -->
-      <div class="admin-stats">
-        <div class="stat-card total">
-          <div class="label">报名总数</div>
-          <div class="num" id="stat-total">0</div>
+      <!-- 顶部一级大 Tab：报名审核 / 用户管理 / 通知公告 / 导出 -->
+      <div class="admin-tabs">
+        <div class="admin-tab active" data-tab="audit">
+          <span class="admin-tab-icon">📋</span>
+          <span class="admin-tab-label">报名审核</span>
+          <span class="admin-tab-count" id="tab-count-audit">0</span>
         </div>
-        <div class="stat-card pending">
-          <div class="label">待审批</div>
-          <div class="num" id="stat-pending">0</div>
+        <div class="admin-tab" data-tab="users" data-role="super">
+          <span class="admin-tab-icon">👥</span>
+          <span class="admin-tab-label">用户与权限</span>
+          <span class="admin-tab-count" id="tab-count-users">0</span>
         </div>
-        <div class="stat-card approved">
-          <div class="label">已通过</div>
-          <div class="num" id="stat-approved">0</div>
+        <div class="admin-tab" data-tab="notice">
+          <span class="admin-tab-icon">📢</span>
+          <span class="admin-tab-label">通知公告</span>
         </div>
-        <div class="stat-card rejected">
-          <div class="label">已拒绝</div>
-          <div class="num" id="stat-rejected">0</div>
-        </div>
-      </div>
-
-      <!-- 筛选 -->
-      <div class="filter-bar">
-        <div class="form-group">
-          <label>状态筛选</label>
-          <select id="filter-status" class="form-control">
-            <option value="">全部状态</option>
-            <option value="pending" selected>待审批</option>
-            <option value="approved">已通过</option>
-            <option value="rejected">已拒绝</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>意向方向</label>
-          <select id="filter-dept" class="form-control">
-            <option value="">全部方向</option>
-            <option value="机器人研发">🤖 机器人研发</option>
-            <option value="人工智能">🧠 人工智能</option>
-            <option value="虚拟现实VR">🥽 虚拟现实 VR</option>
-            <option value="人机交互HCI">🖐️ 人机交互 HCI</option>
-            <option value="机械臂开发">🦾 机械臂开发</option>
-            <option value="暂不确定">🌱 暂不确定</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>搜索（姓名 / 学号 / 邮箱）</label>
-          <input type="text" id="filter-search" class="form-control" placeholder="输入关键词..." />
+        <div class="admin-tab" data-tab="export">
+          <span class="admin-tab-icon">📥</span>
+          <span class="admin-tab-label">数据导出</span>
         </div>
       </div>
 
-      <!-- 列表 -->
-      <div class="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th>姓名</th>
-              <th>学号</th>
-              <th>学院 / 专业</th>
-              <th>年级</th>
-              <th>第一志愿</th>
-              <th>手机</th>
-              <th>邮箱</th>
-              <th>状态</th>
-              <th>报名时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="registrations-body">
-            <tr><td colspan="10" class="empty">加载中...</td></tr>
-          </tbody>
-        </table>
+      <!-- ===== Tab 1: 报名审核 ===== -->
+      <div class="admin-tab-panel active" id="tab-panel-audit">
+
+        <!-- 统计卡片 -->
+        <div class="admin-stats">
+          <div class="stat-card total">
+            <div class="stat-icon">📊</div>
+            <div class="stat-body">
+              <div class="num" id="stat-total">0</div>
+              <div class="label">报名总数</div>
+            </div>
+          </div>
+          <div class="stat-card pending">
+            <div class="stat-icon">⏳</div>
+            <div class="stat-body">
+              <div class="num" id="stat-pending">0</div>
+              <div class="label">待审批</div>
+            </div>
+          </div>
+          <div class="stat-card approved">
+            <div class="stat-icon">✅</div>
+            <div class="stat-body">
+              <div class="num" id="stat-approved">0</div>
+              <div class="label">已通过</div>
+            </div>
+          </div>
+          <div class="stat-card rejected">
+            <div class="stat-icon">❌</div>
+            <div class="stat-body">
+              <div class="num" id="stat-rejected">0</div>
+              <div class="label">已拒绝</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 筛选 -->
+        <div class="filter-bar glass-filter">
+          <div class="form-group">
+            <label>状态筛选</label>
+            <select id="filter-status" class="form-control">
+              <option value="">全部状态</option>
+              <option value="pending" selected>待审批</option>
+              <option value="approved">已通过</option>
+              <option value="rejected">已拒绝</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>意向方向</label>
+            <select id="filter-dept" class="form-control">
+              <option value="">全部方向</option>
+              <option value="机器人研发">🤖 机器人研发</option>
+              <option value="人工智能">🧠 人工智能</option>
+              <option value="虚拟现实VR">🥽 虚拟现实 VR</option>
+              <option value="人机交互HCI">🖐️ 人机交互 HCI</option>
+              <option value="机械臂开发">🦾 机械臂开发</option>
+              <option value="暂不确定">🌱 暂不确定</option>
+            </select>
+          </div>
+          <div class="form-group grow">
+            <label>搜索（姓名 / 学号 / 邮箱）</label>
+            <input type="text" id="filter-search" class="form-control" placeholder="输入关键词..." />
+          </div>
+        </div>
+
+        <!-- 列表 -->
+        <div class="table-wrapper glass-table">
+          <table>
+            <thead>
+              <tr>
+                <th>姓名</th>
+                <th>学号</th>
+                <th>学院 / 专业</th>
+                <th>年级</th>
+                <th>第一志愿</th>
+                <th>手机</th>
+                <th>邮箱</th>
+                <th>状态</th>
+                <th>报名时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="registrations-body">
+              <tr><td colspan="10" class="empty">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      <!-- ===== Tab 2: 用户与权限（仅超级管理员可见） ===== -->
+      <div class="admin-tab-panel" id="tab-panel-users" data-role="super">
+
+        <div class="glass-card section-card">
+          <div class="section-card-header">
+            <div>
+              <div class="card-tag">USER · RBAC CONTROL</div>
+              <h2>👥 用户与权限管理</h2>
+              <p class="section-desc-left">管理系统全部账号，分配管理员权限。
+                <span style="color:var(--accent-gold);">🔒 超级管理员 <code>admin@gxu-ai.club</code> 受系统保护，不可被移除管理员身份。</span>
+              </p>
+            </div>
+            <div class="search-box-right">
+              <input type="text" id="user-search" class="form-control" placeholder="🔍 搜邮箱 / 姓名 / 学号..." />
+            </div>
+          </div>
+
+          <div class="table-wrapper glass-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>账号状态</th>
+                  <th>姓名</th>
+                  <th>学号</th>
+                  <th>邮箱</th>
+                  <th>手机号</th>
+                  <th>学院 / 专业</th>
+                  <th>邮箱验证</th>
+                  <th>管理员权限</th>
+                  <th>创建时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="users-body">
+                <tr><td colspan="10" class="empty">加载中...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Tab 3: 通知公告 ===== -->
+      <div class="admin-tab-panel" id="tab-panel-notice">
+        <div class="glass-card section-card">
+          <div class="section-card-header">
+            <div>
+              <div class="card-tag">NOTICE · PUBLISH</div>
+              <h2>📢 发布通知公告</h2>
+              <p class="section-desc-left">向全体已注册学生 / 指定审批状态学生推送站内通知（可搭配邮件）。</p>
+            </div>
+          </div>
+          <div id="notice-placeholder" class="notice-card">
+            <div style="font-size:2rem;margin-bottom:10px;">📣</div>
+            <div style="font-weight:700;margin-bottom:6px;">通知系统即将上线</div>
+            <div style="color:var(--text-muted);font-size:0.9rem;line-height:1.7;">
+              下一期版本将支持：按「全部学生 / 已通过 / 待审批」分组推送<br/>
+              同时触发邮件通知 · 支持富文本排版 · 已读回执统计
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Tab 4: 数据导出 ===== -->
+      <div class="admin-tab-panel" id="tab-panel-export">
+        <div class="glass-card section-card">
+          <div class="section-card-header">
+            <div>
+              <div class="card-tag">DATA · EXPORT</div>
+              <h2>📥 数据导出中心</h2>
+              <p class="section-desc-left">一键导出当届招新的全部数据，Excel 兼容（带 UTF-8 BOM）。</p>
+            </div>
+          </div>
+
+          <div class="export-grid">
+            <div class="export-item glass-card-inner">
+              <div class="export-icon">📋</div>
+              <div class="export-info">
+                <h3>完整报名表（CSV）</h3>
+                <p>包含全部学生 · 全部字段 · 审批状态与备注 · 可直接 Excel 打开</p>
+                <button class="btn btn-primary" id="btn-export">📥 立即导出</button>
+              </div>
+            </div>
+            <div class="export-item glass-card-inner" data-role="super">
+              <div class="export-icon">👥</div>
+              <div class="export-info">
+                <h3>用户账号清单（CSV）</h3>
+                <p>全部注册用户的邮箱 / 姓名 / 学号 / 管理员权限状态 · 🔒 仅超管可见</p>
+                <button class="btn btn-outline" id="btn-export-users">📥 导出用户清单</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </main>
 
@@ -138,14 +277,12 @@
         <h3>📋 报名详情</h3>
         <button class="modal-close" id="modal-close">×</button>
       </div>
-      <div class="modal-body" id="detail-body">
-        <!-- 动态注入 -->
-      </div>
+      <div class="modal-body" id="detail-body"><!-- 动态注入 --></div>
     </div>
   </div>
 
   <footer class="footer">
-    <p>© 2025 广西大学众创空间 · 人工智能与机器人协会 · 管理员审批系统</p>
+    <p>© 2025 广西大学众创空间 · 电气工程学院 · 管理控制台</p>
   </footer>
 
   <script type="module" src="js/supabase-init.js"></script>
