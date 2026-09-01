@@ -1,0 +1,391 @@
+/* ========================================================
+ * register.js — 纯报名表逻辑 + 草稿自动保存
+ *
+ * 全新流程（学生侧）：
+ *   1. 学生先进入 login.html → 邮箱 + OTP 6 位码 完成登录
+ *        = Supabase 自动建 auth.users 账号 + 邮箱自动标记为 email_confirmed_at
+ *   2. 登录成功后跳回 register.html → 显示身份信息卡（邮箱只读）
+ *   3. 学生填写报名表：
+ *        ⭐ 草稿自动保存：每 10 秒 + 任何 input 后 1.5s 防抖存 localStorage(draft_<uid>)
+ *        ⭐ 页面加载检测草稿 → 顶部横幅提示用户【恢复草稿】或【舍弃】
+ *        ⭐ 提交成功后自动清空该 uid 草稿
+ *   4. 提交：
+ *        a. upsert profiles 表（把姓名/学号/学院等真实身份资料写入档案）
+ *        b. insert registrations 表（当次招新的报名申请，带审批状态）
+ *        c. 如果设置了密码 → 同步写入 Supabase Auth
+ * ======================================================== */
+import { supabase, showAlert, hideAlert, setLoading } from './supabase-init.js';
+
+// ---------- DOM ----------
+const alertEl          = document.getElementById('alert');
+const identityCard     = document.getElementById('identity-card');
+const currentEmailEl   = document.getElementById('current-email');
+const logoutLink       = document.getElementById('logout-link');
+const form             = document.getElementById('register-form');
+const submitBtn        = document.getElementById('submit-btn');
+
+// 在表单前插入草稿横幅和保存提示
+const DRAFT_BANNER_HTML = `
+  <div id="draft-banner" class="draft-banner" style="display:none;">
+    <span id="draft-banner-text">📦 检测到您有未提交的报名草稿，保存于：<span id="draft-time"></span></span>
+    <span class="db-btns">
+      <button type="button" class="btn-restore" id="draft-restore">↩️ 恢复此草稿</button>
+      <button type="button" class="btn-discard" id="draft-discard">🗑 舍弃</button>
+    </span>
+  </div>
+`;
+const DRAFT_HINT_HTML   = `<div id="draft-save-hint" class="draft-save-hint">💾 草稿已自动保存</div>`;
+
+// 草稿涵盖字段
+const DRAFT_FIELDS = [
+  'password','password_confirm',
+  'name','gender','student_id','phone','college','major','grade',
+  'first_department','second_department','skills','motivation','expectation'
+];
+
+// 所有可预填的字段（从 profiles 读取）
+const PRE_FILL_FIELDS = ['name', 'gender', 'student_id', 'phone', 'college', 'major', 'grade'];
+
+let CURRENT_USER = null;
+let draftDirtyTimer = null;
+let draftIntervalTimer = null;
+let loadedDraft = null;   // 页面打开时检测到的旧草稿（供"恢复/舍弃"按钮用）
+
+// ========================================================
+// 页面加载：强制鉴权 + 渲染身份卡 + 草稿检测 + 预填表单
+// ========================================================
+(async () => {
+  hideAlert(alertEl);
+
+  try {
+    // ① 检查是否已登录
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      showAlert(alertEl, 'info',
+        '🔐 报名前请先完成邮箱验证登录，正在跳转登录页...<br/>' +
+        '<span style="font-size:0.85rem;color:var(--text-muted);">登录后会自动跳回报名页继续填写。</span>');
+      setTimeout(() => {
+        location.href = 'login.html?redirect=' + encodeURIComponent('register.html');
+      }, 900);
+      return;
+    }
+    CURRENT_USER = user;
+
+    // ② 邮箱必须已确认（OTP 登录成功后，Supabase 一定会填上 email_confirmed_at；这里做最后硬拦截）
+    if (!user.email_confirmed_at) {
+      showAlert(alertEl, 'error',
+        '⚠️ 该邮箱尚未完成真实性验证！<br/>' +
+        '请先去 <a href="login.html" style="color:var(--accent-cyan)">登录页</a> 用邮箱收到的 6 位验证码完成一次 OTP 登录。'
+      );
+      setTimeout(() => {
+        supabase.auth.signOut().finally(() => {
+          location.href = 'login.html?redirect=' + encodeURIComponent('register.html');
+        });
+      }, 1600);
+      return;
+    }
+
+    // ③ 登录验证通过 → 显示身份卡和表单
+    identityCard.style.display = 'flex';
+    form.style.display         = 'block';
+    currentEmailEl.textContent = user.email || '(未识别)';
+
+    // 在 alertEl 之后插入草稿横幅 + 保存提示
+    alertEl.insertAdjacentHTML('afterend', DRAFT_BANNER_HTML);
+    document.body.insertAdjacentHTML('beforeend', DRAFT_HINT_HTML);
+    bindDraftUI();
+
+    // ④ 草稿检测：先读本地草稿（不立即回填，等用户点"恢复"）
+    loadedDraft = loadDraft(user.id);
+    if (loadedDraft) {
+      $('draft-banner').style.display = 'flex';
+      $('draft-time').textContent = new Date(loadedDraft.__savedAt || Date.now()).toLocaleString('zh-CN');
+    }
+
+    // ⑤ 从 profiles 表预填学生上次写过的资料（如果存在且用户还没点恢复草稿）
+    try {
+      const { data: profile, error: pfErr } = await supabase
+        .from('profiles')
+        .select(PRE_FILL_FIELDS.join(','))
+        .eq('id', user.id)
+        .maybeSingle();
+      if (!pfErr && profile) {
+        for (const f of PRE_FILL_FIELDS) {
+          if (profile[f] != null && profile[f] !== '') {
+            const el = document.getElementById(f);
+            if (el && !el.value) el.value = String(profile[f]);
+          }
+        }
+        if (!loadedDraft) {
+          showAlert(alertEl, 'info',
+            'ℹ️ 已自动预填您上次保存的个人资料，可修改后再提交报名。');
+        }
+      }
+    } catch (pfLoadErr) {
+      console.warn('[register] profiles 预填失败，忽略：', pfLoadErr);
+    }
+
+    // ⑥ 开启草稿自动保存
+    startDraftAutoSave();
+  } catch (bootErr) {
+    console.error('[register] 初始化失败：', bootErr);
+    showAlert(alertEl, 'error', '❌ ' + (bootErr.message || '页面初始化失败，请刷新重试'));
+  }
+})();
+
+// ---------- 草稿 UI 绑定 ----------
+function bindDraftUI() {
+  $('draft-restore').addEventListener('click', () => {
+    if (!loadedDraft) return;
+    restoreDraft(loadedDraft);
+    $('draft-banner').style.display = 'none';
+    showAlert(alertEl, 'info', '✅ 草稿已恢复，您可以继续编辑后提交。');
+  });
+  $('draft-discard').addEventListener('click', () => {
+    if (!confirm('确定要舍弃这份未提交的草稿吗？操作无法撤销。')) return;
+    if (CURRENT_USER) clearDraft(CURRENT_USER.id);
+    loadedDraft = null;
+    $('draft-banner').style.display = 'none';
+  });
+}
+
+// ---------- 切换邮箱：退出后跳登录页 ----------
+logoutLink?.addEventListener('click', async (e) => {
+  e.preventDefault();
+  stopDraftAutoSave();
+  try { await supabase.auth.signOut(); } catch (_) {}
+  location.href = 'login.html?redirect=' + encodeURIComponent('register.html');
+});
+
+// ========================================================
+// 草稿存储 & 读取（localStorage，key = draft_<uid>）
+// ========================================================
+function DRAFT_KEY(uid) { return `draft_${uid}`; }
+
+function collectDraftValues() {
+  const obj = {};
+  for (const f of DRAFT_FIELDS) {
+    const el = document.getElementById(f);
+    if (el) {
+      if (el.type === 'password') {
+        // 出于安全，不存储真实密码明文；仅存"是否已填"标记，避免泄露
+        obj[f] = el.value ? '__FILLED__' : '';
+      } else {
+        obj[f] = el.value || '';
+      }
+    }
+  }
+  obj.__savedAt = Date.now();
+  return obj;
+}
+
+function saveDraft() {
+  if (!CURRENT_USER) return;
+  try {
+    const d = collectDraftValues();
+    // 如果所有非密码字段都为空 → 不保存
+    const nonEmpty = Object.entries(d).some(([k,v]) => !k.startsWith('__') && v && !k.startsWith('password'));
+    if (!nonEmpty) return;
+    localStorage.setItem(DRAFT_KEY(CURRENT_USER.id), JSON.stringify(d));
+    flashSaveHint();
+  } catch (e) { console.warn('saveDraft 失败', e); }
+}
+
+function loadDraft(uid) {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY(uid));
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+function clearDraft(uid) {
+  try { localStorage.removeItem(DRAFT_KEY(uid)); } catch {}
+}
+
+function restoreDraft(d) {
+  if (!d) return;
+  for (const f of DRAFT_FIELDS) {
+    if (f.startsWith('password')) continue;  // 不恢复密码（安全）
+    if (d[f] != null && d[f] !== '') {
+      const el = document.getElementById(f);
+      if (el) el.value = String(d[f]);
+    }
+  }
+}
+
+function flashSaveHint() {
+  const el = $('draft-save-hint');
+  if (!el) return;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1500);
+}
+
+// 防抖：任何 input 事件 1.5s 后保存
+// 定时：每 10s 强制保存一次（防止用户一直打字）
+function startDraftAutoSave() {
+  // input 防抖保存
+  form?.addEventListener('input', () => {
+    clearTimeout(draftDirtyTimer);
+    draftDirtyTimer = setTimeout(saveDraft, 1500);
+  });
+  // 离开页面前再保存一次
+  window.addEventListener('beforeunload', saveDraft);
+  // 10s 定时保存
+  draftIntervalTimer = setInterval(saveDraft, 10000);
+}
+function stopDraftAutoSave() {
+  clearTimeout(draftDirtyTimer);
+  clearInterval(draftIntervalTimer);
+  window.removeEventListener('beforeunload', saveDraft);
+}
+
+// ========================================================
+// 表单提交：upsert profiles + insert registrations
+// ========================================================
+form?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  hideAlert(alertEl);
+
+  try {
+    // ① 确认当前仍然有登录态 + 邮箱已确认
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      showAlert(alertEl, 'error', '🔐 登录态已失效，正在跳回登录页...');
+      setTimeout(() => location.href = 'login.html?redirect=' + encodeURIComponent('register.html'), 800);
+      return;
+    }
+    if (!user.email_confirmed_at) {
+      throw new Error('邮箱尚未完成真实性验证，请先去登录页完成 OTP 验证。');
+    }
+
+    // ② 读取表单数据（邮箱从 Auth 拿，不从表单拿，彻底避免被改）
+    const password        = document.getElementById('password').value;
+    const passwordConfirm = document.getElementById('password_confirm').value;
+    const data = {
+      email:            user.email,
+      name:             document.getElementById('name').value.trim(),
+      gender:           document.getElementById('gender').value,
+      student_id:       document.getElementById('student_id').value.trim(),
+      phone:            document.getElementById('phone').value.trim(),
+      college:          document.getElementById('college').value.trim(),
+      major:            document.getElementById('major').value.trim(),
+      grade:            document.getElementById('grade').value,
+      first_department: document.getElementById('first_department').value,
+      second_department:document.getElementById('second_department').value || null,
+      skills:           document.getElementById('skills').value.trim() || null,
+      motivation:       document.getElementById('motivation').value.trim(),
+      expectation:      document.getElementById('expectation').value.trim() || null,
+    };
+
+    // ③ 基础校验（必填项、手机格式、自我介绍字数）
+    if (!data.name || !data.gender || !data.student_id || !data.phone
+        || !data.college || !data.major || !data.grade || !data.first_department
+        || !data.motivation) {
+      showAlert(alertEl, 'error', '❌ 请填写所有带 * 的必填项');
+      return;
+    }
+    if (!/^1[3-9]\d{9}$/.test(data.phone)) {
+      showAlert(alertEl, 'error', '❌ 请输入 11 位有效的手机号码');
+      return;
+    }
+    if (data.motivation.length < 30) {
+      showAlert(alertEl, 'error', '❌ 自我介绍至少 30 字，请多写一点点～');
+      return;
+    }
+
+    // ④ 密码校验（推荐必填：两个都空跳过；任意一个填了就两个都必填 + 长度≥6 + 两次一致）
+    let passwordSet = false;
+    if (password || passwordConfirm) {
+      if (!password)          { showAlert(alertEl, 'error', '❌ 请填写「设置密码」'); return; }
+      if (!passwordConfirm)   { showAlert(alertEl, 'error', '❌ 请填写「确认密码」'); return; }
+      if (password.length < 6){ showAlert(alertEl, 'error', '❌ 密码至少需要 6 位'); return; }
+      if (password !== passwordConfirm) {
+        showAlert(alertEl, 'error', '❌ 两次输入的密码不一致，请重新输入');
+        return;
+      }
+      passwordSet = true;
+    }
+
+    setLoading(submitBtn, true, passwordSet ? '正在设置密码并提交报名...' : '正在提交报名...');
+
+    // ⑤ 如果填写了密码 → 先调用 Supabase Auth 写入密码（写入成功再继续后面的 DB 操作）
+    if (passwordSet) {
+      const { error: pwErr } = await supabase.auth.updateUser({ password });
+      if (pwErr) {
+        if ((pwErr.message || '').includes('same password')) {
+          showAlert(alertEl, 'error', '❌ 新密码不能和旧密码相同，请换一个。');
+        } else if ((pwErr.message || '').toLowerCase().includes('weak')) {
+          showAlert(alertEl, 'error', '❌ 密码过于简单（Supabase 风控）：请增加长度，使用字母 + 数字 + 符号组合。');
+        } else {
+          throw pwErr;
+        }
+        setLoading(submitBtn, false);
+        return;
+      }
+      // 密码写入成功后再刷新一次 session，避免被踢出
+      await supabase.auth.refreshSession().catch(() => {});
+    }
+
+    // ⑦ 再更新 profiles（学生档案，便于以后登录可以随时修改个人资料）
+    const { error: pfErr } = await supabase.from('profiles').upsert({
+      id:         user.id,
+      email:      data.email,
+      name:       data.name,
+      gender:     data.gender,
+      student_id: data.student_id,
+      phone:      data.phone,
+      college:    data.college,
+      major:      data.major,
+      grade:      data.grade,
+    }, { onConflict: 'id', ignoreDuplicates: false, defaultToNull: true });
+    if (pfErr) throw pfErr;
+
+    // ⑧ 最后插入当次报名申请（registrations = 一次招新一次记录，审批状态挂这）
+    const { error: regErr } = await supabase.from('registrations').insert([{
+      user_id:            user.id,
+      name:               data.name,
+      gender:             data.gender,
+      student_id:         data.student_id,
+      phone:              data.phone,
+      email:              data.email,
+      college:            data.college,
+      major:              data.major,
+      grade:              data.grade,
+      first_department:   data.first_department,
+      second_department:  data.second_department,
+      skills:             data.skills,
+      motivation:         data.motivation,
+      expectation:        data.expectation,
+    }]);
+    if (regErr) {
+      if ((regErr.message || '').includes('duplicate')
+          || (regErr.message || '').toLowerCase().includes('unique')) {
+        throw new Error('您使用当前邮箱已经提交过一次报名，无需重复提交。可登录后查看审批状态。');
+      }
+      throw regErr;
+    }
+
+    // ⑨ 提交成功 → 清空草稿 + 停掉自动保存
+    stopDraftAutoSave();
+    clearDraft(user.id);
+    loadedDraft = null;
+
+    const extraPwMsg = passwordSet
+      ? '<br/>🔐 <span style="color:var(--accent-cyan)">登录密码设置成功</span>，下次可直接在登录页使用「邮箱 + 密码」登录，无需每次收验证码。'
+      : '';
+    showAlert(alertEl, 'success',
+      '🎉 报名提交成功！<br/>' +
+      '我们会在 48 小时内完成审核，结果将通过邮箱（' + data.email + '）通知您。' + extraPwMsg +
+      '<br/><span style="font-size:0.85rem;color:var(--text-muted);">即将跳转到首页，您可随时从登录页查询审批进度。</span>'
+    );
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '✅ 报名已提交';
+
+    setTimeout(() => { location.href = 'index.html'; }, 2400);
+  } catch (err) {
+    console.error('register submit err', err);
+    showAlert(alertEl, 'error', '❌ ' + (err.message || '提交失败，请稍后重试'));
+    setLoading(submitBtn, false);
+  }
+});
