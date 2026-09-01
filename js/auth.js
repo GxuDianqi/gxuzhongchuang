@@ -1,13 +1,15 @@
 /* ========================================================
  * auth.js — 首页导航栏的用户状态渲染 & 登出
  *         + 所有「报名」入口按钮 按登录态动态切换文案/链接
+ *         + 已登录用户的「🔐 修改密码」入口（发送邮箱确认邮件）
  * ======================================================== */
-import { supabase, isCurrentUserAdmin } from './supabase-init.js';
+import { supabase, isCurrentUserAdmin, showAlert, setLoading } from './supabase-init.js';
 
 const navRight = document.getElementById('nav-right-links');
 const navUser = document.getElementById('nav-user');
 const userEmailEl = document.getElementById('user-email');
 const btnLogout = document.getElementById('btn-logout');
+const btnSetPwd = document.getElementById('btn-set-pwd');
 
 // 首页所有「报名」入口按钮 id（每个页面加载时只修改存在的，不存在跳过）
 const CTA_BTN_IDS = ['nav-cta-btn', 'hero-cta-btn', 'footer-cta-btn'];
@@ -33,6 +35,36 @@ function applyCtaButtons(loggedIn) {
   }
 }
 
+// ---------- 工具：获取页面根相对路径（用于 redirectTo，兼容本地 file:// 和 部署后） ----------
+function getBaseUrlForRedirect() {
+  const pathname = location.pathname.replace(/[^/]*$/, '');
+  return location.origin + pathname;
+}
+
+// ---------- 已登录用户：点击「修改密码」→ 调 resetPasswordForEmail ----------
+if (btnSetPwd) {
+  btnSetPwd.addEventListener('click', async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !user.email) return;
+    setLoading(btnSetPwd, true, '🔧 发送中...');
+    try {
+      const redirectTo = getBaseUrlForRedirect() + 'login.html?reset=1';
+      const { error } = await supabase.auth.resetPasswordForEmail(user.email, { redirectTo });
+      if (error) throw error;
+      alert(
+        '✅ 密码设置确认邮件已发送至：\n' + user.email + '\n\n' +
+        '请在 10 分钟内登录邮箱（包括垃圾箱），找到我们的邮件，点击其中的蓝色按钮即可设置新密码。\n\n' +
+        '设置完成后，下次登录即可直接使用「邮箱 + 密码」。'
+      );
+    } catch (err) {
+      console.error('[set-pwd] 发送失败:', err);
+      alert('❌ 发送失败：' + (err && err.message ? err.message : String(err)));
+    } finally {
+      setLoading(btnSetPwd, false);
+    }
+  });
+}
+
 async function renderAuthUI() {
   const { data: { user } } = await supabase.auth.getUser();
   const loggedIn = !!user;
@@ -50,12 +82,12 @@ async function renderAuthUI() {
 
   // 已登录
   navRight.style.display = 'none';
-  navUser.style.display = 'flex';
+  navUser.style.display = 'inline-flex';
   userEmailEl.textContent = user.email;
 
   // 如果是管理员，追加后台入口
   const admin = await isCurrentUserAdmin();
-  if (admin && navRight) {
+  if (admin) {
     const ul = document.querySelector('.nav-links');
     if (ul && !document.getElementById('nav-admin-link')) {
       const li = document.createElement('li');
