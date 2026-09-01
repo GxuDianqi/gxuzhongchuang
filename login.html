@@ -59,18 +59,18 @@
         <button type="submit" class="btn btn-primary btn-submit" id="pwd-submit-btn">登录</button>
       </form>
 
-      <!-- ===== 模式 2：OTP 6 位邮箱验证码（新生首次用 = 自动注册 + 验证邮箱） ===== -->
+      <!-- ===== 模式 2：OTP 8 位邮箱验证码（新生首次用 = 自动注册 + 验证邮箱） ===== -->
       <form id="otp-form" style="display:none;">
         <!-- Step 1: 输入邮箱，发送验证码 -->
         <div class="form-group" id="otp-step-email">
           <label for="otp-email">邮箱 <span class="req">*</span></label>
           <input type="email" id="otp-email" class="form-control" placeholder="新生首次请填常用邮箱" required autocomplete="email" />
         </div>
-        <!-- Step 2: 6 位验证码输入框 + 重发倒计时（发送后显示） -->
+        <!-- Step 2: 8 位验证码输入框 + 重发倒计时（发送后显示） -->
         <div class="form-group" id="otp-step-code" style="display:none;">
-          <label for="otp-token">6 位邮箱验证码 <span class="req">*</span></label>
+          <label for="otp-token">8 位邮箱验证码 <span class="req">*</span></label>
           <input type="text" id="otp-token" name="otp-token" class="form-control" inputmode="numeric"
-                 pattern="[0-9A-Za-z]*" maxlength="32" placeholder="粘贴邮件中显示的 6 位验证码" disabled autocomplete="one-time-code" />
+                 pattern="[0-9A-Za-z]*" maxlength="32" placeholder="粘贴邮件中显示的 8 位验证码" disabled autocomplete="one-time-code" />
           <div class="hint-line">
             <a href="#" id="resend-link" style="pointer-events:none;opacity:0.5;">重新发送验证码</a>
             <span id="resend-countdown" style="color:var(--text-muted);font-size:0.85rem;margin-left:8px;"></span>
@@ -93,7 +93,7 @@
   </main>
 
   <footer class="footer">
-    <p>© 2025 广西大学众创空间 · 人工智能与机器人协会</p>
+    <p>© 2026 广西大学众创空间 · 人工智能与机器人协会</p>
   </footer>
 
   <script type="module" src="js/supabase-init.js"></script>
