@@ -16,6 +16,9 @@
  * ======================================================== */
 import { supabase, showAlert, hideAlert, setLoading } from './supabase-init.js';
 
+// 工具函数（修复 '$ is not defined' Bug）
+const $ = (id) => document.getElementById(id);
+
 // ---------- DOM ----------
 const alertEl          = document.getElementById('alert');
 const identityCard     = document.getElementById('identity-card');
@@ -36,9 +39,8 @@ const DRAFT_BANNER_HTML = `
 `;
 const DRAFT_HINT_HTML   = `<div id="draft-save-hint" class="draft-save-hint">💾 草稿已自动保存</div>`;
 
-// 草稿涵盖字段
+// 草稿涵盖字段（注意：密码设置已彻底移至 change-password.html，此处只存报名信息）
 const DRAFT_FIELDS = [
-  'password','password_confirm',
   'name','gender','student_id','phone','college','major','grade',
   'first_department','second_department','skills','motivation','expectation'
 ];
@@ -166,14 +168,7 @@ function collectDraftValues() {
   const obj = {};
   for (const f of DRAFT_FIELDS) {
     const el = document.getElementById(f);
-    if (el) {
-      if (el.type === 'password') {
-        // 出于安全，不存储真实密码明文；仅存"是否已填"标记，避免泄露
-        obj[f] = el.value ? '__FILLED__' : '';
-      } else {
-        obj[f] = el.value || '';
-      }
-    }
+    if (el) obj[f] = el.value || '';
   }
   obj.__savedAt = Date.now();
   return obj;
@@ -183,8 +178,8 @@ function saveDraft() {
   if (!CURRENT_USER) return;
   try {
     const d = collectDraftValues();
-    // 如果所有非密码字段都为空 → 不保存
-    const nonEmpty = Object.entries(d).some(([k,v]) => !k.startsWith('__') && v && !k.startsWith('password'));
+    // 如果所有字段都为空 → 不保存
+    const nonEmpty = Object.entries(d).some(([k,v]) => !k.startsWith('__') && v);
     if (!nonEmpty) return;
     localStorage.setItem(DRAFT_KEY(CURRENT_USER.id), JSON.stringify(d));
     flashSaveHint();
@@ -206,7 +201,6 @@ function clearDraft(uid) {
 function restoreDraft(d) {
   if (!d) return;
   for (const f of DRAFT_FIELDS) {
-    if (f.startsWith('password')) continue;  // 不恢复密码（安全）
     if (d[f] != null && d[f] !== '') {
       const el = document.getElementById(f);
       if (el) el.value = String(d[f]);
@@ -260,8 +254,6 @@ form?.addEventListener('submit', async (e) => {
     }
 
     // ② 读取表单数据（邮箱从 Auth 拿，不从表单拿，彻底避免被改）
-    const password        = document.getElementById('password').value;
-    const passwordConfirm = document.getElementById('password_confirm').value;
     const data = {
       email:            user.email,
       name:             document.getElementById('name').value.trim(),
@@ -294,40 +286,9 @@ form?.addEventListener('submit', async (e) => {
       return;
     }
 
-    // ④ 密码校验（推荐必填：两个都空跳过；任意一个填了就两个都必填 + 长度≥6 + 两次一致）
-    let passwordSet = false;
-    if (password || passwordConfirm) {
-      if (!password)          { showAlert(alertEl, 'error', '❌ 请填写「设置密码」'); return; }
-      if (!passwordConfirm)   { showAlert(alertEl, 'error', '❌ 请填写「确认密码」'); return; }
-      if (password.length < 6){ showAlert(alertEl, 'error', '❌ 密码至少需要 6 位'); return; }
-      if (password !== passwordConfirm) {
-        showAlert(alertEl, 'error', '❌ 两次输入的密码不一致，请重新输入');
-        return;
-      }
-      passwordSet = true;
-    }
+    setLoading(submitBtn, true, '正在提交报名...');
 
-    setLoading(submitBtn, true, passwordSet ? '正在设置密码并提交报名...' : '正在提交报名...');
-
-    // ⑤ 如果填写了密码 → 先调用 Supabase Auth 写入密码（写入成功再继续后面的 DB 操作）
-    if (passwordSet) {
-      const { error: pwErr } = await supabase.auth.updateUser({ password });
-      if (pwErr) {
-        if ((pwErr.message || '').includes('same password')) {
-          showAlert(alertEl, 'error', '❌ 新密码不能和旧密码相同，请换一个。');
-        } else if ((pwErr.message || '').toLowerCase().includes('weak')) {
-          showAlert(alertEl, 'error', '❌ 密码过于简单（Supabase 风控）：请增加长度，使用字母 + 数字 + 符号组合。');
-        } else {
-          throw pwErr;
-        }
-        setLoading(submitBtn, false);
-        return;
-      }
-      // 密码写入成功后再刷新一次 session，避免被踢出
-      await supabase.auth.refreshSession().catch(() => {});
-    }
-
-    // ⑦ 再更新 profiles（学生档案，便于以后登录可以随时修改个人资料）
+    // ④ 更新 profiles（学生档案，便于以后登录可以随时修改个人资料）
     const { error: pfErr } = await supabase.from('profiles').upsert({
       id:         user.id,
       email:      data.email,
@@ -341,7 +302,7 @@ form?.addEventListener('submit', async (e) => {
     }, { onConflict: 'id', ignoreDuplicates: false, defaultToNull: true });
     if (pfErr) throw pfErr;
 
-    // ⑧ 最后插入当次报名申请（registrations = 一次招新一次记录，审批状态挂这）
+    // ⑤ 最后插入当次报名申请（registrations = 一次招新一次记录，审批状态挂这）
     const { error: regErr } = await supabase.from('registrations').insert([{
       user_id:            user.id,
       name:               data.name,
@@ -366,17 +327,15 @@ form?.addEventListener('submit', async (e) => {
       throw regErr;
     }
 
-    // ⑨ 提交成功 → 清空草稿 + 停掉自动保存
+    // ⑥ 提交成功 → 清空草稿 + 停掉自动保存
     stopDraftAutoSave();
     clearDraft(user.id);
     loadedDraft = null;
 
-    const extraPwMsg = passwordSet
-      ? '<br/>🔐 <span style="color:var(--accent-cyan)">登录密码设置成功</span>，下次可直接在登录页使用「邮箱 + 密码」登录，无需每次收验证码。'
-      : '';
     showAlert(alertEl, 'success',
       '🎉 报名提交成功！<br/>' +
-      '我们会在 48 小时内完成审核，结果将通过邮箱（' + data.email + '）通知您。' + extraPwMsg +
+      '我们会在 48 小时内完成审核，结果将通过邮箱（' + data.email + '）通知您。<br/>' +
+      '🔐 如需设置/修改登录密码，请到 <a href="change-password.html" style="color:var(--accent-cyan);text-decoration:underline;">密码管理页</a> 操作，下次登录更方便。' +
       '<br/><span style="font-size:0.85rem;color:var(--text-muted);">即将跳转到首页，您可随时从登录页查询审批进度。</span>'
     );
     submitBtn.disabled = true;
