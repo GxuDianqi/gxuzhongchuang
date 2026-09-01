@@ -462,24 +462,57 @@ async function toggleAdmin(userId, email) {
     alert(`✅ 权限变更成功：【${u.name || email}】已${verb}。\n\n⚠️ 若目标用户当前已登录，请让他退出再登录，以便刷新 JWT 中的 is_admin 声明。`);
   } catch (err) {
     console.error('toggleAdmin err', err);
-    if (/function.*set_admin.*does not exist|不存在|不存在.*函数/i.test(err.message || '')) {
-      if (!confirm(`⚠️ 数据库尚未定义 public.set_admin() 函数。\n\n是否使用降级方案（仅更新 profiles.is_admin，需目标用户重新登录才生效）？`)) return;
-      try {
-        const { error: err2 } = await supabase.from('profiles').update({ is_admin: next }).eq('id', userId);
-        if (err2) throw err2;
-        const idx = allUsers.findIndex(x => x.id === userId);
-        if (idx >= 0) allUsers[idx] = { ...allUsers[idx], is_admin: next };
-        renderUsers();
-        alert('✅ profiles 字段已更新（降级方案）。\n目标用户退出再登录后权限生效。\n【强烈建议】在 Supabase SQL Editor 执行文末的 CREATE OR REPLACE FUNCTION set_admin 加固脚本。');
-      } catch (e2) { alert('降级方案也失败：' + (e2.message || e2)); }
+    const msg = err.message || '';
+    // 函数不存在 / 命名参数对不上 → 都是同一个根因：没跑 01-fix-set-admin.sql
+    if (/could not find.*function.*set_admin|function.*set_admin.*(does|did) not exist|set_admin.*不存在|schema cache|不存在.*函数/i.test(msg)) {
+      const runSql = confirm(
+        `⚠️ 数据库缺少 public.set_admin 函数（或参数名不匹配）\n\n` +
+        `【修复步骤 · 只需做一次】\n\n` +
+        `1. 打开 Supabase → SQL Editor → New Query\n` +
+        `   （直接访问：https://supabase.com/dashboard/project/xiyaelfbkjnukfeipcwv/sql/new ）\n\n` +
+        `2. 打开本项目文件：supabase/01-fix-set-admin.sql\n` +
+        `   全选复制全部内容，粘贴到 SQL Editor\n\n` +
+        `3. 点击右下角绿色 ▶ Run（运行结果：Success. No rows returned）\n\n` +
+        `4. 回到本页面，再次尝试切换管理员开关。\n\n` +
+        `点击【确定】查看详细操作指引（打开文件所在目录）。\n` +
+        `点击【取消】使用降级方案（仅改 profiles.is_admin，目标需重新登录才生效）。`
+      );
+      if (!runSql) {
+        try {
+          const { error: err2 } = await supabase.from('profiles').update({ is_admin: next }).eq('id', userId);
+          if (err2) throw err2;
+          const idx = allUsers.findIndex(x => x.id === userId);
+          if (idx >= 0) allUsers[idx] = { ...allUsers[idx], is_admin: next };
+          renderUsers();
+          alert('⚠️ 降级方案已执行（仅更新 profiles.is_admin 字段）。\n\n' +
+            '问题：JWT 中的 app_metadata.is_admin 仍为旧值，目标用户退出重登后生效，但 RLS 用 auth.jwt() 的策略可能继续卡权限。\n\n' +
+            '强烈建议按上面指引跑 01-fix-set-admin.sql，一次解决。');
+        } catch (e2) { alert('降级方案也失败：' + (e2.message || e2)); }
+      } else {
+        // 用户点击确定 → 打开工作目录中 SQL 脚本所在文件夹（浏览器端：复制文件路径）
+        try {
+          const sqlPath = 'c:\\Users\\ASUS\\Desktop\\大创比赛\\招新网站\\supabase\\01-fix-set-admin.sql';
+          // 纯前端无法直接"打开文件夹"，退而求其次：复制路径到剪贴板 + 弹提示
+          await navigator.clipboard.writeText(sqlPath);
+          alert('📋 SQL 脚本路径已复制到剪贴板：\n\n' + sqlPath + '\n\n' +
+            '请在资源管理器中打开此目录，双击 01-fix-set-admin.sql，\n' +
+            '全部内容复制粘贴到 Supabase SQL Editor，然后点 Run。\n\n' +
+            '（同时自动打开 Supabase SQL Editor 新标签页）');
+          window.open('https://supabase.com/dashboard/project/xiyaelfbkjnukfeipcwv/sql/new', '_blank');
+        } catch (_) {
+          alert('请手动打开：c:\\Users\\ASUS\\Desktop\\大创比赛\\招新网站\\supabase\\01-fix-set-admin.sql\n\n' +
+            '复制内容 → 粘贴到 https://supabase.com/dashboard/project/xiyaelfbkjnukfeipcwv/sql/new 运行。');
+          window.open('https://supabase.com/dashboard/project/xiyaelfbkjnukfeipcwv/sql/new', '_blank');
+        }
+      }
       return;
     }
     // 后端硬拦截命中：set_admin 函数内部报权限错
-    if (/仅最高管理员|permission|denied|super.admin|must be|raise exception/i.test(err.message || '')) {
-      alert('🔒 后端拒绝此操作：\n\n' + (err.message || err) + '\n\n请确认当前账号邮箱为 ' + SUPER_ADMIN_EMAIL);
+    if (/仅最高管理员|权限被拒|permission|denied|super\.admin|must be|raise exception|禁止/i.test(msg)) {
+      alert('🔒 后端拒绝此操作：\n\n' + msg + '\n\n请确认当前登录账号为 ' + SUPER_ADMIN_EMAIL + ' 并重试。');
       return;
     }
-    alert('权限变更失败：' + (err.message || err));
+    alert('权限变更失败：' + msg);
   }
 }
 
