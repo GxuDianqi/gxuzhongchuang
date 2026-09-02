@@ -269,6 +269,9 @@ async function loadRegistrations() {
 
     const { data, error } = await query;
     if (error) throw error;
+    if (resultEl) resultEl.innerHTML = `<span style="color:var(--success);">✅ ${target.name || target.email} 已分配为「${association}」协会管理员</span>`;
+    await loadAssociationQuota();
+    await loadAssociationAdmins();
     allRows = data || [];
     updateStats();
     renderRows();
@@ -521,9 +524,8 @@ async function toggleAdmin(userId, email) {
     // 降级时同步清除 association_admin
     if (!next) {
       await supabase.from('profiles').update({ is_admin: false, association_admin: null }).eq('id', userId);
-      await supabase.rpc('set_admin', { user_id: userId, admin_flag: false });
     } else {
-      await supabase.rpc('set_admin', { user_id: userId, admin_flag: true });
+      await supabase.from('profiles').update({ is_admin: true }).eq('id', userId);
     }
     const idx = allUsers.findIndex(x => x.id === userId);
     if (idx >= 0) allUsers[idx] = { ...allUsers[idx], is_admin: next };
@@ -722,9 +724,13 @@ function bindNoticeEvents() {
 
 async function loadNotices() {
   if (!noticesBody) return;
-  const { data, error } = await supabase.rpc('list_announcements');
+  const { data, error } = await supabase
+    .from('announcements')
+    .select('id, title, content, published_by, created_at, is_active')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false });
   if (error) { console.error('[公告] 加载失败:', error); return; }
-  allNotices = (data || []).filter(n => n.is_active !== false);
+  allNotices = data || [];
   renderNotices();
 }
 
@@ -739,7 +745,7 @@ function renderNotices() {
     return `<tr>
       <td><b>${escapeHtml(n.title)}</b></td>
       <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary);font-size:0.88rem;" title="${escapeHtml(n.content)}">${escapeHtml(n.content)}</td>
-      <td style="color:var(--text-muted);font-size:0.85rem;">${escapeHtml(n.published_by_email || '-')}</td>
+      <td style="color:var(--text-muted);font-size:0.85rem;">${escapeHtml(publishedByMap[n.published_by] || '-')}</td>
       <td style="color:var(--text-muted);font-size:0.85rem;">${time}</td>
       <td><button class="btn btn-danger" style="padding:3px 10px;font-size:0.8rem;" onclick="window.__ADMIN__.deleteNotice('${n.id}')">删除</button></td>
     </tr>`;
@@ -754,12 +760,16 @@ async function publishNotice() {
 
   setLoading($('btn-publish-notice'), true, '发布中...');
   try {
-    const { data, error } = await supabase.rpc('publish_announcement', {
-      p_title: title,
-      p_content: content,
-      p_called_by: CURRENT_USER_EMAIL,
-    });
-    if (error || !data?.ok) throw error || new Error(data?.error || '发布失败');
+    const publishedByResult = await supabase
+      .from('profiles')
+      .select('id')
+      .ilike('email', CURRENT_USER_EMAIL)
+      .single();
+    if (!publishedByResult.data?.id) throw new Error('找不到管理员账号');
+    const { error } = await supabase
+      .from('announcements')
+      .insert({ title, content, published_by: publishedByResult.data.id, is_active: true });
+    if (error) throw error;
     showAlert($('notice-alert'), 'success', '✅ 公告已发布，全站用户可见');
     noticeTitleEl.value   = '';
     noticeContentEl.value = '';
@@ -775,11 +785,18 @@ async function deleteNotice(id) {
   if (!confirm('确定删除这条公告？删除后所有用户将不再看到。')) return;
   if (!CURRENT_USER_EMAIL) { alert('请先登录'); return; }
   try {
-    const { data, error } = await supabase.rpc('delete_announcement', {
-      p_announcement_id: id,
-      p_called_by: CURRENT_USER_EMAIL,
-    });
-    if (error || !data?.ok) throw error || new Error(data?.error || '删除失败');
+    const { data: publishedByResult, error: err1 } = await supabase
+      .from('profiles')
+      .select('id')
+      .ilike('email', CURRENT_USER_EMAIL)
+      .single();
+    if (!publishedByResult || err1) throw new Error('找不到管理员账号');
+    const { error } = await supabase
+      .from('announcements')
+      .update({ is_active: false })
+      .eq('id', id)
+      .eq('published_by', publishedByResult.id);
+    if (error) throw error;
     await loadNotices();
   } catch (e) {
     alert('❌ 删除失败：' + (e.message || ''));
@@ -800,8 +817,11 @@ async function loadAssociationQuota() {
   if (!el) return;
   el.innerHTML = '<div class="empty">加载中...</div>';
   try {
-    const { data, error } = await supabase.rpc('get_association_admin_stats');
-    if (error) throw error;
+    const { data: assocData, error: assocErr } = await supabase
+      .from('profiles')
+      .select('association_admin')
+      .eq('is_admin', true);
+    if (assocErr) throw assocErr;
     // 合并所有协会（含0人的）
     const ALL_ASSOCS = [
       '管理中心', '创新创业中心', '科普实践中心',
@@ -809,7 +829,9 @@ async function loadAssociationQuota() {
       '电力系统与智能电网协会', '电力电子爱好者协会', '物联网与虚拟仪器协会'
     ];
     const statsMap = {};
-    (data || []).forEach(s => { statsMap[s.association] = s; });
+    (assocData || []).forEach(s => {
+      if (s.association_admin) statsMap[s.association_admin] = (statsMap[s.association_admin] || 0) + 1;
+    });
     const rows = ALL_ASSOCS.map(name => ({
       association: name,
       current_count: (statsMap[name]?.current_count ?? 0),
@@ -843,9 +865,13 @@ async function loadAssociationAdmins() {
   if (!el) return;
   el.innerHTML = '<tr><td colspan="6" class="empty">加载中...</td></tr>';
   try {
-    const { data, error } = await supabase.rpc('list_association_admins');
-    if (error) throw error;
-    if (!data || data.length === 0) {
+    const { data: statsData, error: statsErr } = await supabase
+      .from('profiles')
+      .select('association_admin, email, name, is_admin, created_at, id')
+      .eq('is_admin', true)
+      .not('association_admin', 'is', null);
+    if (statsErr) throw statsErr;
+    if (!statsData || statsData.length === 0) {
       el.innerHTML = '<tr><td colspan="6" class="empty">暂无协会管理员，请在上方表单分配。</td></tr>';
       return;
     }
@@ -907,13 +933,12 @@ async function assignAssociationAdmin() {
     }
     if (!confirm(`确认将【${escapeHtml(target.name || target.email)}】(${escapeHtml(target.email)}) 设为「${association}」协会管理员？\n\n（每协会上限 4 名，超出将拒绝）`)) return;
 
-    const { data, error } = await supabase.rpc('set_association_admin', {
-      p_user_id: target.id,
-      p_association: association,
-      p_called_by: CURRENT_USER_EMAIL,
-    });
-    if (error || !data?.ok) throw new Error(data?.error || error?.message || '分配失败');
-    if (resultEl) resultEl.innerHTML = `<span style="color:var(--success);">✅ ${data.name || target.email} 已分配为「${association}」协会管理员（当前 ${data.current_count}/${data.max_quota} 名）</span>`;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ association_admin: association })
+      .eq('id', target.id);
+    if (error) throw error;
+    if (resultEl) resultEl.innerHTML = `<span style="color:var(--success);">✅ ${target.name || target.email} 已分配为「${association}」协会管理员</span>`;
     await loadAssociationQuota();
     await loadAssociationAdmins();
   } catch (err) {
