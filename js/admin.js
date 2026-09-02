@@ -269,9 +269,6 @@ async function loadRegistrations() {
 
     const { data, error } = await query;
     if (error) throw error;
-    if (resultEl) resultEl.innerHTML = `<span style="color:var(--success);">✅ ${target.name || target.email} 已分配为「${association}」协会管理员</span>`;
-    await loadAssociationQuota();
-    await loadAssociationAdmins();
     allRows = data || [];
     updateStats();
     renderRows();
